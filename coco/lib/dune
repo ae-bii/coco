@@ -1,2 +1,4 @@
 (library
- (name coco))
+ (name coco)
+ (libraries
+ re))
