@@ -5,9 +5,9 @@
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github aebii/coco))
 
-(authors "Author Name <author@example.com>")
+(authors "Anupam Bhakta <ab5494@columbia.edu>")
 
 (maintainers "Maintainer Name <maintainer@example.com>")
 
@@ -19,7 +19,7 @@
  (name coco)
  (synopsis "A short synopsis")
  (description "A longer description")
- (depends ocaml)
+ (depends ocaml dune re)
  (tags
   ("add topics" "to describe" your project)))
 
