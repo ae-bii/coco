@@ -9,18 +9,16 @@
 
 (authors "Anupam Bhakta <ab5494@columbia.edu>")
 
-(maintainers "Maintainer Name <maintainer@example.com>")
-
 (license LICENSE)
 
-(documentation https://url/to/documentation)
+(documentation https://github.com/ae-bii/coco )
 
 (package
  (name coco)
- (synopsis "A short synopsis")
- (description "A longer description")
+ (synopsis "C compiler written in OCaml")
+ (description "A C compiler written in OCaml in order to learn about compilers, OCaml, and functional programming.")
  (depends ocaml dune re)
  (tags
-  ("add topics" "to describe" your project)))
+  ("c" "ocaml" "compilers")))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html
