@@ -1,0 +1,4 @@
+type exp = Const of int
+type statement = Return of exp
+type fun_decl = Fun of string * statement list
+type prog = Prog of fun_decl list
