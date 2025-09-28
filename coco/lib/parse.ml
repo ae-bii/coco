@@ -19,3 +19,28 @@ let parse_statement tokens =
   let tokens_after_semicolon = expect Lex.SEMICOLON tokens_after_expr in
 
   (Return expr_node, tokens_after_semicolon)
+
+let rec parse_fun_decl tokens =
+  let tokens = expect Lex.INT tokens in
+  let name, tokens =
+    match tokens with
+    | Lex.ID s :: rest -> (s, rest)
+    | _ -> failwith "Expected function name"
+  in
+  let tokens = expect Lex.LPAREN tokens in
+  let tokens = expect Lex.RPAREN tokens in
+  let tokens = expect Lex.LBRACE tokens in
+
+  let rec parse_statements_until_brace acc tokens =
+    match tokens with
+    | Lex.RBRACE :: _ -> (List.rev acc, tokens)
+    | _ ->
+        let stmt, rest = parse_statement tokens in
+        parse_statements_until_brace (stmt :: acc) rest
+  in
+
+  let statements, tokens = parse_statements_until_brace [] tokens in
+
+  let tokens = expect Lex.RBRACE tokens in
+
+  (Fun (name, statements), tokens)
