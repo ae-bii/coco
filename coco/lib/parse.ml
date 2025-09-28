@@ -1,7 +1,4 @@
-type exp = Const of int
-type statement = Return of exp
-type fun_decl = Fun of string * statement list
-type prog = Prog of fun_decl list
+open Ast
 
 let expect expected tokens =
   match tokens with
@@ -20,7 +17,7 @@ let parse_statement tokens =
 
   (Return expr_node, tokens_after_semicolon)
 
-let rec parse_fun_decl tokens =
+let parse_fun_decl tokens =
   let tokens = expect Lex.INT tokens in
   let name, tokens =
     match tokens with
@@ -44,3 +41,14 @@ let rec parse_fun_decl tokens =
   let tokens = expect Lex.RBRACE tokens in
 
   (Fun (name, statements), tokens)
+
+let parse tokens =
+  let rec parse_all_functions acc tokens =
+    match tokens with
+    | [] -> List.rev acc
+    | _ ->
+        let func, rest = parse_fun_decl tokens in
+        parse_all_functions (func :: acc) rest
+  in
+  let all_funcs = parse_all_functions [] tokens in
+  Prog all_funcs
