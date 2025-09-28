@@ -1,6 +1,6 @@
 (library
  (name coco)
  (public_name coco)
- (modules ast ast_printer lex parse)
+ (modules ast ast_printer generator lexer parser)
  (libraries re))
 
