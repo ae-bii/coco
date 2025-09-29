@@ -6,6 +6,12 @@ let string_of_unop (op : unop) : string =
   | BWCOMPLIMENT -> "BwCompl"
   | LGNEGATION -> "LgNeg"
 
+let string_of_binop (op : binop) : string =
+  match op with
+  | Add -> "+"
+  | Multiply -> "*"
+  | Divide -> "/"
+
 let indent_space level = String.make (level * 4) ' '
 
 let rec string_of_prog (p : prog) : string =
@@ -35,9 +41,13 @@ and string_of_statement level (s : statement) : string =
 and string_of_exp level (e : exp) : string =
   let i = indent_space level in
   match e with
-  | Const c -> Printf.sprintf "%sInt<%d>" i c
+  | Const i_val -> Printf.sprintf "%sInt<%d>" i i_val
   | UnOp (op, inner_exp) ->
       let op_str = string_of_unop op in
-      (* Recursively call to print the inner expression with more indentation *)
       let exp_str = string_of_exp (level + 1) inner_exp in
       Printf.sprintf "%sUnOp<%s>(\n%s\n%s)" i op_str exp_str i
+  | BinOp (left_exp, op, right_exp) ->
+      let op_str = string_of_binop op in
+      let left_str = string_of_exp (level + 1) left_exp in
+      let right_str = string_of_exp (level + 1) right_exp in
+      Printf.sprintf "%sBinOp<%s>(\n%s,\n%s\n%s)" i op_str left_str right_str i
