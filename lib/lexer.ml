@@ -2,7 +2,7 @@ open Re
 open Ast
 
 let word_re = seq [ alpha; rep (alt [ alnum; char '_' ]) ]
-let special_chars_re = set "[]{}();~!-"
+let special_chars_re = set "[]{}();~!-+*/"
 let integer_re = rep1 digit
 let hex_digits_manual_re = set "0-9a-fA-F"
 let hex_re = seq [ alt [ str "0x"; str "0X" ]; rep1 hex_digits_manual_re ]
@@ -34,10 +34,14 @@ let string_to_token s =
     | "]" -> RBRACKET
     | "{" -> LBRACE
     | "}" -> RBRACE
-    (* operators *)
+    (* unary operators *)
     | "-" -> NEGATION
     | "~" -> BWCOMPLIMENT
     | "!" -> LGNEGATION
+    (* binary operators *)
+    | "+" -> ADDITION
+    | "*" -> MULTIPLICATION
+    | "/" -> DIVISION
     (* default for variable data (Numbers and IDs) *)
     | _ ->
         if String.length s > 0 then
