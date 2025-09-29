@@ -19,9 +19,9 @@ type token =
   | BWCOMPLIMENT
   | LGNEGATION
   (* binary operators *)
-  | ADDITION
-  | MULTIPLICATION
-  | DIVISION
+  | ADD
+  | MULTIPLY
+  | DIVIDE
 
 type unop =
   | NEGATION
@@ -29,9 +29,9 @@ type unop =
   | LGNEGATION
 
 type binop =
-  | ADDITION
-  | MULTIPLICATION
-  | DIVISION
+  | Add
+  | Multiply
+  | Divide
 
 type exp =
   | Const of int

@@ -39,9 +39,9 @@ let string_to_token s =
     | "~" -> BWCOMPLIMENT
     | "!" -> LGNEGATION
     (* binary operators *)
-    | "+" -> ADDITION
-    | "*" -> MULTIPLICATION
-    | "/" -> DIVISION
+    | "+" -> ADD
+    | "*" -> MULTIPLY
+    | "/" -> DIVIDE
     (* default for variable data (Numbers and IDs) *)
     | _ ->
         if String.length s > 0 then
