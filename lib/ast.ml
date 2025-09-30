@@ -15,11 +15,12 @@ type token =
   | RBRACE
   | WHITESPACE
   (* unary operators *)
-  | NEGATION
+  | MINUS
   | BWCOMPLIMENT
   | LGNEGATION
   (* binary operators *)
   | ADD
+  | SUBTRACT
   | MULTIPLY
   | DIVIDE
 
@@ -30,6 +31,7 @@ type unop =
 
 type binop =
   | Add
+  | Subtract
   | Multiply
   | Divide
 

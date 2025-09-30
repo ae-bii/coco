@@ -35,7 +35,7 @@ let string_to_token s =
     | "{" -> LBRACE
     | "}" -> RBRACE
     (* unary operators *)
-    | "-" -> NEGATION
+    | "-" -> MINUS
     | "~" -> BWCOMPLIMENT
     | "!" -> LGNEGATION
     (* binary operators *)

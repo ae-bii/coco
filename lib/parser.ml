@@ -12,6 +12,9 @@ let rec parse_exp tokens =
     | ADD :: rest ->
         let right_node, remaining_tokens = parse_term rest in
         loop (BinOp (left_node, Add, right_node)) remaining_tokens
+    | MINUS :: rest ->
+        let right_node, remaining_tokens = parse_term rest in
+        loop (BinOp (left_node, Subtract, right_node)) remaining_tokens
     | _ -> (left_node, tokens)
   in
   loop term_node tokens_after_term
@@ -37,7 +40,7 @@ and parse_factor tokens =
       let exp_node, tokens_after_exp = parse_exp rest in
       let tokens_after_paren = expect RPAREN tokens_after_exp in
       (exp_node, tokens_after_paren)
-  | NEGATION :: rest ->
+  | MINUS :: rest ->
       let factor_node, remaining_tokens = parse_factor rest in
       (UnOp (NEGATION, factor_node), remaining_tokens)
   | BWCOMPLIMENT :: rest ->

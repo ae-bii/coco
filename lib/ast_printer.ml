@@ -9,6 +9,7 @@ let string_of_unop (op : unop) : string =
 let string_of_binop (op : binop) : string =
   match op with
   | Add -> "+"
+  | Subtract -> "-"
   | Multiply -> "*"
   | Divide -> "/"
 
