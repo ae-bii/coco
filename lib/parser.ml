@@ -11,7 +11,6 @@ let rec parse_exp tokens =
     match tokens with
     | ADD :: rest ->
         let right_node, remaining_tokens = parse_term rest in
-        (* MODIFICATION: Use the 'Add' constructor from the binop type *)
         loop (BinOp (left_node, Add, right_node)) remaining_tokens
     | _ -> (left_node, tokens)
   in
@@ -23,11 +22,9 @@ and parse_term tokens =
     match tokens with
     | MULTIPLY :: rest ->
         let right_node, remaining_tokens = parse_factor rest in
-        (* MODIFICATION: Use the 'Multiply' constructor *)
         loop (BinOp (left_node, Multiply, right_node)) remaining_tokens
     | DIVIDE :: rest ->
         let right_node, remaining_tokens = parse_factor rest in
-        (* MODIFICATION: Use the 'Divide' constructor *)
         loop (BinOp (left_node, Divide, right_node)) remaining_tokens
     | _ -> (left_node, tokens)
   in
@@ -53,8 +50,6 @@ and parse_factor tokens =
       failwith
         "Invalid factor: expected a number, parenthesized expression, or unary \
          operator."
-
-(* --- The rest of the file is unchanged --- *)
 
 let parse_statement tokens =
   let tokens_after_return = expect RETURN tokens in
