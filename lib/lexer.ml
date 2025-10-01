@@ -11,7 +11,17 @@ let octal_re = seq [ str "0"; rep1 octal_digits_manual_re ]
 let whitespace_re = rep1 space
 
 let multi_char_op_re =
-  alt [ str "&&"; str "||"; str "=="; str "!="; str "<="; str ">=" ]
+  alt
+    [
+      str "&&";
+      str "||";
+      str "==";
+      str "!=";
+      str "<=";
+      str ">=";
+      str "<<";
+      str ">>";
+    ]
 
 let re =
   alt
@@ -62,6 +72,12 @@ let string_to_token s =
     | "<=" -> LESS_EQUAL
     | ">" -> GREATER
     | ">=" -> GREATER_EQUAL
+    | "%" -> MODULO
+    | "&" -> BW_AND
+    | "|" -> BW_OR
+    | "^" -> BW_XOR
+    | "<<" -> LSHIFT
+    | ">>" -> RSHIFT
     (* default for variable data (Numbers and IDs) *)
     | _ ->
         if String.length s > 0 then
