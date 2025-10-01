@@ -12,6 +12,14 @@ let string_of_binop (op : binop) : string =
   | Subtract -> "-"
   | Multiply -> "*"
   | Divide -> "/"
+  | And -> "&&"
+  | Or -> "||"
+  | Equal -> "=="
+  | NotEqual -> "!="
+  | Less -> "<"
+  | LessEqual -> "<="
+  | Greater -> ">"
+  | GreaterEqual -> ">="
 
 let indent_space level = String.make (level * 4) ' '
 
