@@ -23,6 +23,14 @@ type token =
   | SUBTRACT
   | MULTIPLY
   | DIVIDE
+  | AND
+  | OR
+  | EQUAL
+  | NOT_EQUAL
+  | LESS
+  | LESS_EQUAL
+  | GREATER
+  | GREATER_EQUAL
 
 type unop =
   | NEGATION
@@ -34,6 +42,14 @@ type binop =
   | Subtract
   | Multiply
   | Divide
+  | And
+  | Or
+  | Equal
+  | NotEqual
+  | Less
+  | LessEqual
+  | Greater
+  | GreaterEqual
 
 type exp =
   | Const of int
