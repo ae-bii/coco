@@ -20,6 +20,12 @@ let string_of_binop (op : binop) : string =
   | LessEqual -> "<="
   | Greater -> ">"
   | GreaterEqual -> ">="
+  | Modulo -> "%"
+  | BitwiseAnd -> "&"
+  | BitwiseOr -> "|"
+  | BitwiseXor -> "^"
+  | LShift -> "<<"
+  | RShift -> ">>"
 
 let indent_space level = String.make (level * 4) ' '
 
