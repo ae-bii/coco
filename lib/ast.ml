@@ -31,6 +31,12 @@ type token =
   | LESS_EQUAL
   | GREATER
   | GREATER_EQUAL
+  | MODULO
+  | BW_AND
+  | BW_OR
+  | BW_XOR
+  | LSHIFT
+  | RSHIFT
 
 type unop =
   | NEGATION
@@ -50,6 +56,12 @@ type binop =
   | LessEqual
   | Greater
   | GreaterEqual
+  | Modulo
+  | BitwiseAnd
+  | BitwiseOr
+  | BitwiseXor
+  | LShift
+  | RShift
 
 type exp =
   | Const of int
