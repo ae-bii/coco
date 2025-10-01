@@ -29,6 +29,42 @@ and parse_logical_and_exp tokens =
   in
   loop left_node remaining_tokens
 
+and parse_bitwise_or_exp tokens =
+  (* precedence level: | *)
+  let left_node, remaining_tokens = parse_bitwise_xor_exp tokens in
+  let rec loop acc tokens =
+    match tokens with
+    | BW_OR :: rest ->
+        let right_node, remaining = parse_bitwise_xor_exp rest in
+        loop (BinOp (acc, BitwiseOr, right_node)) remaining
+    | _ -> (acc, tokens)
+  in
+  loop left_node remaining_tokens
+
+and parse_bitwise_xor_exp tokens =
+  (* precedence level: ^ *)
+  let left_node, remaining_tokens = parse_bitwise_and_exp tokens in
+  let rec loop acc tokens =
+    match tokens with
+    | BW_XOR :: rest ->
+        let right_node, remaining = parse_bitwise_and_exp rest in
+        loop (BinOp (acc, BitwiseXor, right_node)) remaining
+    | _ -> (acc, tokens)
+  in
+  loop left_node remaining_tokens
+
+and parse_bitwise_and_exp tokens =
+  (* precedence level: & *)
+  let left_node, remaining_tokens = parse_equality_exp tokens in
+  let rec loop acc tokens =
+    match tokens with
+    | BW_AND :: rest ->
+        let right_node, remaining = parse_equality_exp rest in
+        loop (BinOp (acc, BitwiseAnd, right_node)) remaining
+    | _ -> (acc, tokens)
+  in
+  loop left_node remaining_tokens
+
 and parse_equality_exp tokens =
   (* precedence level: ==, != *)
   let left_node, remaining_tokens = parse_relational_exp tokens in
@@ -65,6 +101,21 @@ and parse_relational_exp tokens =
   in
   loop left_node remaining_tokens
 
+and parse_shift_exp tokens =
+  (* precedence level: <<, >> *)
+  let left_node, remaining_tokens = parse_additive_exp tokens in
+  let rec loop acc tokens =
+    match tokens with
+    | LSHIFT :: rest ->
+        let right_node, remaining = parse_additive_exp rest in
+        loop (BinOp (acc, LShift, right_node)) remaining
+    | RSHIFT :: rest ->
+        let right_node, remaining = parse_additive_exp rest in
+        loop (BinOp (acc, RShift, right_node)) remaining
+    | _ -> (acc, tokens)
+  in
+  loop left_node remaining_tokens
+
 and parse_additive_exp tokens =
   (* precedence level: +, - *)
   let left_node, remaining_tokens = parse_term tokens in
@@ -81,7 +132,7 @@ and parse_additive_exp tokens =
   loop left_node remaining_tokens
 
 and parse_term tokens =
-  (* precedence level: *, / *)
+  (* precedence level: *, /, % *)
   let left_node, remaining_tokens = parse_factor tokens in
   let rec loop acc tokens =
     match tokens with
@@ -91,6 +142,10 @@ and parse_term tokens =
     | DIVIDE :: rest ->
         let right_node, remaining = parse_factor rest in
         loop (BinOp (acc, Divide, right_node)) remaining
+    | MODULO :: rest ->
+        (* <-- Add Modulo case *)
+        let right_node, remaining = parse_factor rest in
+        loop (BinOp (acc, Modulo, right_node)) remaining
     | _ -> (acc, tokens)
   in
   loop left_node remaining_tokens
