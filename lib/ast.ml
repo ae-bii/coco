@@ -37,6 +37,7 @@ type token =
   | BW_XOR
   | LSHIFT
   | RSHIFT
+  | ASSIGN
 
 type unop =
   | NEGATION
@@ -67,7 +68,12 @@ type exp =
   | Const of int
   | UnOp of unop * exp
   | BinOp of exp * binop * exp
+  | Var of string
 
-type statement = Return of exp
+type statement =
+  | Return of exp
+  | Declare of string * exp option
+  | Assign of string * exp
+
 type fun_decl = Fun of string * statement list
 type prog = Prog of fun_decl list
