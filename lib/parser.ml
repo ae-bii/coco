@@ -6,34 +6,97 @@ let expect expected tokens =
   | _ -> failwith "Expected another token, but got a different one."
 
 let rec parse_exp tokens =
-  let term_node, tokens_after_term = parse_term tokens in
-  let rec loop left_node tokens =
+  (* lowest precedence: || *)
+  let left_node, remaining_tokens = parse_logical_and_exp tokens in
+  let rec loop acc tokens =
+    match tokens with
+    | OR :: rest ->
+        let right_node, remaining = parse_logical_and_exp rest in
+        loop (BinOp (acc, Or, right_node)) remaining
+    | _ -> (acc, tokens)
+  in
+  loop left_node remaining_tokens
+
+and parse_logical_and_exp tokens =
+  (* precedence level: && *)
+  let left_node, remaining_tokens = parse_equality_exp tokens in
+  let rec loop acc tokens =
+    match tokens with
+    | AND :: rest ->
+        let right_node, remaining = parse_equality_exp rest in
+        loop (BinOp (acc, And, right_node)) remaining
+    | _ -> (acc, tokens)
+  in
+  loop left_node remaining_tokens
+
+and parse_equality_exp tokens =
+  (* precedence level: ==, != *)
+  let left_node, remaining_tokens = parse_relational_exp tokens in
+  let rec loop acc tokens =
+    match tokens with
+    | EQUAL :: rest ->
+        let right_node, remaining = parse_relational_exp rest in
+        loop (BinOp (acc, Equal, right_node)) remaining
+    | NOT_EQUAL :: rest ->
+        let right_node, remaining = parse_relational_exp rest in
+        loop (BinOp (acc, NotEqual, right_node)) remaining
+    | _ -> (acc, tokens)
+  in
+  loop left_node remaining_tokens
+
+and parse_relational_exp tokens =
+  (* precedence level: <, <=, >, >= *)
+  let left_node, remaining_tokens = parse_additive_exp tokens in
+  let rec loop acc tokens =
+    match tokens with
+    | LESS :: rest ->
+        let right_node, remaining = parse_additive_exp rest in
+        loop (BinOp (acc, Less, right_node)) remaining
+    | LESS_EQUAL :: rest ->
+        let right_node, remaining = parse_additive_exp rest in
+        loop (BinOp (acc, LessEqual, right_node)) remaining
+    | GREATER :: rest ->
+        let right_node, remaining = parse_additive_exp rest in
+        loop (BinOp (acc, Greater, right_node)) remaining
+    | GREATER_EQUAL :: rest ->
+        let right_node, remaining = parse_additive_exp rest in
+        loop (BinOp (acc, GreaterEqual, right_node)) remaining
+    | _ -> (acc, tokens)
+  in
+  loop left_node remaining_tokens
+
+and parse_additive_exp tokens =
+  (* precedence level: +, - *)
+  let left_node, remaining_tokens = parse_term tokens in
+  let rec loop acc tokens =
     match tokens with
     | ADD :: rest ->
-        let right_node, remaining_tokens = parse_term rest in
-        loop (BinOp (left_node, Add, right_node)) remaining_tokens
+        let right_node, remaining = parse_term rest in
+        loop (BinOp (acc, Add, right_node)) remaining
     | MINUS :: rest ->
-        let right_node, remaining_tokens = parse_term rest in
-        loop (BinOp (left_node, Subtract, right_node)) remaining_tokens
-    | _ -> (left_node, tokens)
+        let right_node, remaining = parse_term rest in
+        loop (BinOp (acc, Subtract, right_node)) remaining
+    | _ -> (acc, tokens)
   in
-  loop term_node tokens_after_term
+  loop left_node remaining_tokens
 
 and parse_term tokens =
-  let factor_node, tokens_after_factor = parse_factor tokens in
-  let rec loop left_node tokens =
+  (* precedence level: *, / *)
+  let left_node, remaining_tokens = parse_factor tokens in
+  let rec loop acc tokens =
     match tokens with
     | MULTIPLY :: rest ->
-        let right_node, remaining_tokens = parse_factor rest in
-        loop (BinOp (left_node, Multiply, right_node)) remaining_tokens
+        let right_node, remaining = parse_factor rest in
+        loop (BinOp (acc, Multiply, right_node)) remaining
     | DIVIDE :: rest ->
-        let right_node, remaining_tokens = parse_factor rest in
-        loop (BinOp (left_node, Divide, right_node)) remaining_tokens
-    | _ -> (left_node, tokens)
+        let right_node, remaining = parse_factor rest in
+        loop (BinOp (acc, Divide, right_node)) remaining
+    | _ -> (acc, tokens)
   in
-  loop factor_node tokens_after_factor
+  loop left_node remaining_tokens
 
 and parse_factor tokens =
+  (* highest precedence: numbers, parens, unary ops *)
   match tokens with
   | NUM i :: rest -> (Const i, rest)
   | LPAREN :: rest ->
@@ -49,10 +112,7 @@ and parse_factor tokens =
   | LGNEGATION :: rest ->
       let factor_node, remaining_tokens = parse_factor rest in
       (UnOp (LGNEGATION, factor_node), remaining_tokens)
-  | _ ->
-      failwith
-        "Invalid factor: expected a number, parenthesized expression, or unary \
-         operator."
+  | _ -> failwith "Invalid factor"
 
 let parse_statement tokens =
   let tokens_after_return = expect RETURN tokens in
