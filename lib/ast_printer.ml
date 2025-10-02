@@ -52,9 +52,6 @@ and string_of_statement level (s : statement) : string =
   | Return exp ->
       let exp_str = string_of_exp (level + 1) exp in
       Printf.sprintf "%sRETURN\n%s" i exp_str
-  | Assign (name, exp) ->
-      let exp_str = string_of_exp (level + 1) exp in
-      Printf.sprintf "%sASSIGN to \"%s\"\n%s" i name exp_str
   | Declare (name, exp_opt) ->
       let init_str =
         match exp_opt with
@@ -62,12 +59,18 @@ and string_of_statement level (s : statement) : string =
         | None -> ""
       in
       Printf.sprintf "%sDECLARE \"%s\"%s" i name init_str
+  | Exp exp ->
+      let exp_str = string_of_exp (level + 1) exp in
+      Printf.sprintf "%sEXP\n%s" i exp_str
 
 and string_of_exp level (e : exp) : string =
   let i = indent_space level in
   match e with
   | Const i_val -> Printf.sprintf "%sInt<%d>" i i_val
   | Var name -> Printf.sprintf "%sVar<\"%s\">" i name
+  | Assign (name, exp) ->
+      let exp_str = string_of_exp (level + 1) exp in
+      Printf.sprintf "%sASSIGN to \"%s\"\n%s" i name exp_str
   | UnOp (op, inner_exp) ->
       let op_str = string_of_unop op in
       let exp_str = string_of_exp (level + 1) inner_exp in

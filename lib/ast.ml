@@ -69,11 +69,12 @@ type exp =
   | UnOp of unop * exp
   | BinOp of exp * binop * exp
   | Var of string
+  | Assign of string * exp
 
 type statement =
   | Return of exp
   | Declare of string * exp option
-  | Assign of string * exp
+  | Exp of exp
 
 type fun_decl = Fun of string * statement list
 type prog = Prog of fun_decl list
