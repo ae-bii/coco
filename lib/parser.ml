@@ -6,7 +6,14 @@ let expect expected tokens =
   | _ -> failwith "Expected another token, but got a different one."
 
 let rec parse_exp tokens =
-  (* lowest precedence: || *)
+  match tokens with
+  | ID name :: ASSIGN :: rest ->
+      let rhs_exp, remaining_tokens = parse_exp rest in
+      (Assign (name, rhs_exp), remaining_tokens)
+  | _ -> parse_logical_or_exp tokens
+
+and parse_logical_or_exp tokens =
+  (* precedence level: || *)
   let left_node, remaining_tokens = parse_logical_and_exp tokens in
   let rec loop acc tokens =
     match tokens with
@@ -82,20 +89,20 @@ and parse_equality_exp tokens =
 
 and parse_relational_exp tokens =
   (* precedence level: <, <=, >, >= *)
-  let left_node, remaining_tokens = parse_additive_exp tokens in
+  let left_node, remaining_tokens = parse_shift_exp tokens in
   let rec loop acc tokens =
     match tokens with
     | LESS :: rest ->
-        let right_node, remaining = parse_additive_exp rest in
+        let right_node, remaining = parse_shift_exp rest in
         loop (BinOp (acc, Less, right_node)) remaining
     | LESS_EQUAL :: rest ->
-        let right_node, remaining = parse_additive_exp rest in
+        let right_node, remaining = parse_shift_exp rest in
         loop (BinOp (acc, LessEqual, right_node)) remaining
     | GREATER :: rest ->
-        let right_node, remaining = parse_additive_exp rest in
+        let right_node, remaining = parse_shift_exp rest in
         loop (BinOp (acc, Greater, right_node)) remaining
     | GREATER_EQUAL :: rest ->
-        let right_node, remaining = parse_additive_exp rest in
+        let right_node, remaining = parse_shift_exp rest in
         loop (BinOp (acc, GreaterEqual, right_node)) remaining
     | _ -> (acc, tokens)
   in
@@ -154,6 +161,7 @@ and parse_factor tokens =
   (* highest precedence: numbers, parens, unary ops *)
   match tokens with
   | NUM i :: rest -> (Const i, rest)
+  | ID s :: rest -> (Var s, rest)
   | LPAREN :: rest ->
       let exp_node, tokens_after_exp = parse_exp rest in
       let tokens_after_paren = expect RPAREN tokens_after_exp in
@@ -169,11 +177,25 @@ and parse_factor tokens =
       (UnOp (LGNEGATION, factor_node), remaining_tokens)
   | _ -> failwith "Invalid factor"
 
-let parse_statement tokens =
-  let tokens_after_return = expect RETURN tokens in
-  let expr_node, tokens_after_expr = parse_exp tokens_after_return in
-  let tokens_after_semicolon = expect SEMICOLON tokens_after_expr in
-  (Return expr_node, tokens_after_semicolon)
+and parse_statement tokens =
+  match tokens with
+  | RETURN :: rest ->
+      let exp_node, tokens_after_exp = parse_exp rest in
+      let tokens_after_semicolon = expect SEMICOLON tokens_after_exp in
+      (Return exp_node, tokens_after_semicolon)
+  | INT :: ID name :: rest -> (
+      (* variable declaration *)
+      match rest with
+      | SEMICOLON :: rest_after_decl -> (Declare (name, None), rest_after_decl)
+      | ASSIGN :: rest_after_assign ->
+          let init_exp, tokens_after_exp = parse_exp rest_after_assign in
+          let tokens_after_semicolon = expect SEMICOLON tokens_after_exp in
+          (Declare (name, Some init_exp), tokens_after_semicolon)
+      | _ -> failwith "Invalid declaration syntax")
+  | _ ->
+      let exp_node, tokens_after_exp = parse_exp tokens in
+      let tokens_after_semicolon = expect SEMICOLON tokens_after_exp in
+      (Exp exp_node, tokens_after_semicolon)
 
 let parse_fun_decl tokens =
   let tokens = expect INT tokens in
@@ -183,6 +205,7 @@ let parse_fun_decl tokens =
     | _ -> failwith "Expected function name"
   in
   let tokens = expect LPAREN tokens in
+  let tokens = expect RPAREN tokens in
   let tokens = expect RPAREN tokens in
   let tokens = expect LBRACE tokens in
   let rec parse_statements_until_brace acc tokens =
