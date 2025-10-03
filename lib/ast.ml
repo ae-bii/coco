@@ -38,6 +38,19 @@ type token =
   | LSHIFT
   | RSHIFT
   | ASSIGN
+  | COMMA
+  | INCREMENT
+  | DECREMENT
+  | COMPOUND_ADD
+  | COMPOUND_SUB
+  | COMPOUND_MUL
+  | COMPOUND_DIV
+  | COMPOUND_MOD
+  | COMPOUND_LSHIFT
+  | COMPOUND_RSHIFT
+  | COMPOUND_AND
+  | COMPOUND_OR
+  | COMPOUND_XOR
 
 type unop =
   | NEGATION
@@ -63,6 +76,7 @@ type binop =
   | BitwiseXor
   | LShift
   | RShift
+  | Comma
 
 type exp =
   | Const of int
@@ -70,6 +84,11 @@ type exp =
   | BinOp of exp * binop * exp
   | Var of string
   | Assign of string * exp
+  | CompoundAssign of string * binop * exp
+  | PostfixInc of string
+  | PostfixDec of string
+  | PrefixInc of string
+  | PrefixDec of string
 
 type statement =
   | Return of exp
