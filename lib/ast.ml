@@ -97,9 +97,14 @@ type exp =
 
 type statement =
   | Return of exp
-  | Declare of string * exp option
   | Exp of exp
   | If of exp * statement * statement option
 
-type fun_decl = Fun of string * statement list
+type declaration = Declare of string * exp option
+
+type block_item =
+  | Statement of statement
+  | Declaration of declaration
+
+type fun_decl = Fun of string * block_item list
 type prog = Prog of fun_decl list
