@@ -51,6 +51,10 @@ type token =
   | COMPOUND_AND
   | COMPOUND_OR
   | COMPOUND_XOR
+  | IF
+  | ELSE
+  | QUESTION
+  | COLON
 
 type unop =
   | NEGATION
@@ -89,11 +93,13 @@ type exp =
   | PostfixDec of string
   | PrefixInc of string
   | PrefixDec of string
+  | Conditional of exp * exp * exp
 
 type statement =
   | Return of exp
   | Declare of string * exp option
   | Exp of exp
+  | If of exp * statement * statement option
 
 type fun_decl = Fun of string * statement list
 type prog = Prog of fun_decl list
