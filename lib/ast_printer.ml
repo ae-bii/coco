@@ -26,6 +26,7 @@ let string_of_binop (op : binop) : string =
   | BitwiseXor -> "^"
   | LShift -> "<<"
   | RShift -> ">>"
+  | Comma -> ","
 
 let indent_space level = String.make (level * 4) ' '
 
@@ -80,3 +81,12 @@ and string_of_exp level (e : exp) : string =
       let left_str = string_of_exp (level + 1) left_exp in
       let right_str = string_of_exp (level + 1) right_exp in
       Printf.sprintf "%sBinOp<%s>(\n%s,\n%s\n%s)" i op_str left_str right_str i
+  | CompoundAssign (name, op, exp) ->
+      let op_str = string_of_binop op in
+      let exp_str = string_of_exp (level + 1) exp in
+      Printf.sprintf "%sCOMPOUND_ASSIGN to \"%s\" op <%s>\n%s" i name op_str
+        exp_str
+  | PostfixInc name -> Printf.sprintf "%sPOSTFIX_INC on \"%s\"" i name
+  | PostfixDec name -> Printf.sprintf "%sPOSTFIX_DEC on \"%s\"" i name
+  | PrefixInc name -> Printf.sprintf "%sPREFIX_INC on \"%s\"" i name
+  | PrefixDec name -> Printf.sprintf "%sPREFIX_DEC on \"%s\"" i name
