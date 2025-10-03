@@ -86,8 +86,54 @@ and generate_exp (e : exp) (ctx : context) : string * context =
         | LGNEGATION -> "  cmp rax, 0\n  mov rax, 0\n  sete al\n"
       in
       (inner_exp_asm ^ op_asm, updated_ctx)
+  | CompoundAssign (name, op, exp) ->
+      if not (Hashtbl.mem ctx.var_map name) then
+        failwith ("Undeclared variable: " ^ name);
+      let offset = Hashtbl.find ctx.var_map name in
+      let exp_asm, updated_ctx = generate_exp exp ctx in
+      let op_str =
+        match op with
+        | Add -> "add"
+        | Subtract -> "sub"
+        | Multiply -> "imul"
+        | BitwiseAnd -> "and"
+        | BitwiseOr -> "or"
+        | BitwiseXor -> "xor"
+        | _ ->
+            failwith
+              "Compound assignment for this operator is not yet implemented"
+      in
+      ( exp_asm (* Result of right-hand side is in RAX *)
+        ^ Printf.sprintf "  %s [rbp + %d], rax\n" op_str offset
+        ^ Printf.sprintf "  mov rax, [rbp + %d]\n" offset,
+        (* Result is the new value *)
+        updated_ctx )
+  | PrefixInc name ->
+      let offset = Hashtbl.find ctx.var_map name in
+      ( Printf.sprintf "  add qword [rbp + %d], 1\n" offset
+        ^ Printf.sprintf "  mov rax, [rbp + %d]\n" offset,
+        ctx )
+  | PostfixInc name ->
+      let offset = Hashtbl.find ctx.var_map name in
+      ( Printf.sprintf "  mov rax, [rbp + %d]\n" offset
+        ^ Printf.sprintf "  add qword [rbp + %d], 1\n" offset,
+        ctx )
+  | PrefixDec name ->
+      let offset = Hashtbl.find ctx.var_map name in
+      ( Printf.sprintf "  sub qword [rbp + %d], 1\n" offset
+        ^ Printf.sprintf "  mov rax, [rbp + %d]\n" offset,
+        ctx )
+  | PostfixDec name ->
+      let offset = Hashtbl.find ctx.var_map name in
+      ( Printf.sprintf "  mov rax, [rbp + %d]\n" offset
+        ^ Printf.sprintf "  sub qword [rbp + %d], 1\n" offset,
+        ctx )
   | BinOp (left_exp, op, right_exp) -> (
       match op with
+      | Comma ->
+          let left_asm, ctx1 = generate_exp left_exp ctx in
+          let right_asm, ctx2 = generate_exp right_exp ctx1 in
+          (left_asm ^ right_asm, ctx2)
       (* short circuiting operators *)
       | And ->
           let left_asm, ctx1 = generate_exp left_exp ctx in
