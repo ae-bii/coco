@@ -63,6 +63,16 @@ and string_of_statement level (s : statement) : string =
   | Exp exp ->
       let exp_str = string_of_exp (level + 1) exp in
       Printf.sprintf "%sEXP\n%s" i exp_str
+  | If (cond, then_stmt, else_opt) ->
+      let cond_str = string_of_exp (level + 1) cond in
+      let then_str = string_of_statement (level + 1) then_stmt in
+      let else_str =
+        match else_opt with
+        | Some s ->
+            Printf.sprintf "\n%sELSE\n%s" i (string_of_statement (level + 1) s)
+        | None -> ""
+      in
+      Printf.sprintf "%sIF\n%s\n%sTHEN\n%s%s" i cond_str i then_str else_str
 
 and string_of_exp level (e : exp) : string =
   let i = indent_space level in
@@ -90,3 +100,9 @@ and string_of_exp level (e : exp) : string =
   | PostfixDec name -> Printf.sprintf "%sPOSTFIX_DEC on \"%s\"" i name
   | PrefixInc name -> Printf.sprintf "%sPREFIX_INC on \"%s\"" i name
   | PrefixDec name -> Printf.sprintf "%sPREFIX_DEC on \"%s\"" i name
+  | Conditional (cond, then_exp, else_exp) ->
+      let cond_str = string_of_exp (level + 1) cond in
+      let then_str = string_of_exp (level + 1) then_exp in
+      let else_str = string_of_exp (level + 1) else_exp in
+      Printf.sprintf "%sCONDITIONAL\n%s\n%s?\n%s\n%s:\n%s" i cond_str i then_str
+        i else_str
