@@ -36,7 +36,7 @@ and parse_assignment_exp tokens =
   | ID name :: COMPOUND_MOD :: rest ->
       let rhs, remaining = parse_assignment_exp rest in
       (CompoundAssign (name, Modulo, rhs), remaining)
-  | _ -> parse_logical_or_exp tokens
+  | _ -> parse_conditional_exp tokens
 
 and parse_conditional_exp tokens =
   let cond_exp, after_cond = parse_logical_or_exp tokens in
