@@ -38,14 +38,30 @@ let rec string_of_prog (p : prog) : string =
 
 and string_of_fun_decl level (f : fun_decl) : string =
   match f with
-  | Fun (name, stmts) ->
+  | Fun (name, block_items) ->
+      (* Now takes a list of block_items *)
       let i = indent_space level in
       let i_plus_1 = indent_space (level + 1) in
-      let stmts_str = List.map (string_of_statement (level + 2)) stmts in
-      let body_str = String.concat "\n" stmts_str in
-
+      let items_str = List.map (string_of_block_item (level + 2)) block_items in
+      let body_str = String.concat "\n" items_str in
       Printf.sprintf "%sFUN INT %s:\n%sparams: ()\n%sbody:\n%s" i name i_plus_1
         i_plus_1 body_str
+
+and string_of_block_item level (bi : block_item) : string =
+  match bi with
+  | Statement s -> string_of_statement level s
+  | Declaration d -> string_of_declaration level d
+
+and string_of_declaration level (d : declaration) : string =
+  let i = indent_space level in
+  match d with
+  | Declare (name, exp_opt) ->
+      let init_str =
+        match exp_opt with
+        | Some exp -> Printf.sprintf " =\n%s" (string_of_exp (level + 1) exp)
+        | None -> ""
+      in
+      Printf.sprintf "%sDECLARE \"%s\"%s" i name init_str
 
 and string_of_statement level (s : statement) : string =
   let i = indent_space level in
@@ -53,13 +69,6 @@ and string_of_statement level (s : statement) : string =
   | Return exp ->
       let exp_str = string_of_exp (level + 1) exp in
       Printf.sprintf "%sRETURN\n%s" i exp_str
-  | Declare (name, exp_opt) ->
-      let init_str =
-        match exp_opt with
-        | Some exp -> Printf.sprintf "\n%s" (string_of_exp (level + 1) exp)
-        | None -> ""
-      in
-      Printf.sprintf "%sDECLARE \"%s\"%s" i name init_str
   | Exp exp ->
       let exp_str = string_of_exp (level + 1) exp in
       Printf.sprintf "%sEXP\n%s" i exp_str
