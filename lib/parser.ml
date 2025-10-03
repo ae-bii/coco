@@ -38,6 +38,16 @@ and parse_assignment_exp tokens =
       (CompoundAssign (name, Modulo, rhs), remaining)
   | _ -> parse_logical_or_exp tokens
 
+and parse_conditional_exp tokens =
+  let cond_exp, after_cond = parse_logical_or_exp tokens in
+  match after_cond with
+  | QUESTION :: rest ->
+      let then_exp, after_then = parse_exp rest in
+      let after_colon = expect COLON after_then in
+      let else_exp, after_else = parse_conditional_exp after_colon in
+      (Conditional (cond_exp, then_exp, else_exp), after_else)
+  | _ -> (cond_exp, after_cond)
+
 and parse_logical_or_exp tokens =
   (* precedence level: || *)
   let left_node, remaining_tokens = parse_logical_and_exp tokens in
@@ -227,14 +237,9 @@ and parse_primary_exp tokens =
       (exp_node, tokens_after_paren)
   | _ -> failwith "Invalid primary expression"
 
-and parse_statement tokens =
+and parse_declaration tokens =
   match tokens with
-  | RETURN :: rest ->
-      let exp_node, tokens_after_exp = parse_exp rest in
-      let tokens_after_semicolon = expect SEMICOLON tokens_after_exp in
-      (Return exp_node, tokens_after_semicolon)
   | INT :: ID name :: rest -> (
-      (* variable declaration *)
       match rest with
       | SEMICOLON :: rest_after_decl -> (Declare (name, None), rest_after_decl)
       | ASSIGN :: rest_after_assign ->
@@ -242,10 +247,36 @@ and parse_statement tokens =
           let tokens_after_semicolon = expect SEMICOLON tokens_after_exp in
           (Declare (name, Some init_exp), tokens_after_semicolon)
       | _ -> failwith "Invalid declaration syntax")
+  | _ -> failwith "Not a declaration"
+
+and parse_statement tokens =
+  match tokens with
+  | RETURN :: rest ->
+      let exp_node, tokens_after_exp = parse_exp rest in
+      let tokens_after_semicolon = expect SEMICOLON tokens_after_exp in
+      (Return exp_node, tokens_after_semicolon)
+  | IF :: LPAREN :: rest -> (
+      let cond_exp, after_cond = parse_exp rest in
+      let after_paren = expect RPAREN after_cond in
+      let then_stmt, after_then = parse_statement after_paren in
+      match after_then with
+      | ELSE :: after_else ->
+          let else_stmt, after_else_stmt = parse_statement after_else in
+          (If (cond_exp, then_stmt, Some else_stmt), after_else_stmt)
+      | _ -> (If (cond_exp, then_stmt, None), after_then))
   | _ ->
       let exp_node, tokens_after_exp = parse_exp tokens in
       let tokens_after_semicolon = expect SEMICOLON tokens_after_exp in
       (Exp exp_node, tokens_after_semicolon)
+
+and parse_block_item tokens =
+  match tokens with
+  | INT :: _ ->
+      let decl, remaining = parse_declaration tokens in
+      (Declaration decl, remaining)
+  | _ ->
+      let stmt, remaining = parse_statement tokens in
+      (Statement stmt, remaining)
 
 let parse_fun_decl tokens =
   let tokens = expect INT tokens in
@@ -257,16 +288,17 @@ let parse_fun_decl tokens =
   let tokens = expect LPAREN tokens in
   let tokens = expect RPAREN tokens in
   let tokens = expect LBRACE tokens in
-  let rec parse_statements_until_brace acc tokens =
+  let rec parse_block_items_until_brace acc tokens =
     match tokens with
     | RBRACE :: _ -> (List.rev acc, tokens)
     | _ ->
-        let stmt, rest = parse_statement tokens in
-        parse_statements_until_brace (stmt :: acc) rest
+        let item, rest = parse_block_item tokens in
+        parse_block_items_until_brace (item :: acc) rest
   in
-  let statements, tokens = parse_statements_until_brace [] tokens in
+
+  let block_items, tokens = parse_block_items_until_brace [] tokens in
   let tokens = expect RBRACE tokens in
-  (Fun (name, statements), tokens)
+  (Fun (name, block_items), tokens)
 
 let parse tokens =
   let tokens_no_whitespace = List.filter (fun t -> t <> WHITESPACE) tokens in
