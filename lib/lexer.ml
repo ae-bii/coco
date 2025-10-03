@@ -2,7 +2,7 @@ open Re
 open Ast
 
 let word_re = seq [ alpha; rep (alt [ alnum; char '_' ]) ]
-let single_chars_re = set "[]{}();~!-+*/<>="
+let single_chars_re = set "[]{}();~!-+*/<>=,"
 let integer_re = rep1 digit
 let hex_digits_manual_re = set "0-9a-fA-F"
 let hex_re = seq [ alt [ str "0x"; str "0X" ]; rep1 hex_digits_manual_re ]
@@ -21,6 +21,18 @@ let multi_char_op_re =
       str ">=";
       str "<<";
       str ">>";
+      str "+=";
+      str "-=";
+      str "*=";
+      str "/=";
+      str "%=";
+      str "<<=";
+      str ">>=";
+      str "&=";
+      str "|=";
+      str "^=";
+      str "++";
+      str "--";
     ]
 
 let re =
@@ -79,6 +91,19 @@ let string_to_token s =
     | "<<" -> LSHIFT
     | ">>" -> RSHIFT
     | "=" -> ASSIGN
+    | "," -> COMMA
+    | "++" -> INCREMENT
+    | "--" -> DECREMENT
+    | "+=" -> COMPOUND_ADD
+    | "-=" -> COMPOUND_SUB
+    | "*=" -> COMPOUND_MUL
+    | "/=" -> COMPOUND_DIV
+    | "%=" -> COMPOUND_MOD
+    | "<<=" -> COMPOUND_LSHIFT
+    | ">>=" -> COMPOUND_RSHIFT
+    | "&=" -> COMPOUND_AND
+    | "|=" -> COMPOUND_OR
+    | "^=" -> COMPOUND_XOR
     (* default for variable data (Numbers and IDs) *)
     | _ ->
         if String.length s > 0 then
