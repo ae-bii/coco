@@ -27,25 +27,27 @@ and generate_fun_decl (f : fun_decl) : string =
       let initial_context = { stack_index = 0; var_map = Hashtbl.create 16 } in
       let body_asm, _ =
         List.fold_left
-          (fun (asm, ctx) stmt ->
-            let new_asm, new_ctx = generate_statement stmt ctx in
+          (fun (asm, ctx) item ->
+            let new_asm, new_ctx = generate_block_item item ctx in
             (asm ^ new_asm, new_ctx))
           ("", initial_context) stmts
       in
-      let last_stmt = List.nth_opt (List.rev stmts) 0 in
+
+      let last_item = List.nth_opt (List.rev stmts) 0 in
       let epilogue =
-        match last_stmt with
-        | Some (Return _) -> ""
+        match last_item with
+        | Some (Statement (Return _)) -> ""
         | _ -> "  mov rax, 0\n  mov rsp, rbp\n  pop rbp\n  ret\n"
       in
       prologue ^ body_asm ^ epilogue
 
-and generate_statement (s : statement) (ctx : context) : string * context =
-  match s with
-  | Return exp ->
-      let exp_asm, updated_ctx = generate_exp exp ctx in
-      let epilogue = "  mov rsp, rbp\n  pop rbp\n  ret\n" in
-      (exp_asm ^ epilogue, updated_ctx)
+and generate_block_item (i : block_item) (ctx : context) : string * context =
+  match i with
+  | Statement s -> generate_statement s ctx
+  | Declaration d -> generate_declaration d ctx
+
+and generate_declaration (d : declaration) (ctx : context) : string * context =
+  match d with
   | Declare (name, exp_opt) ->
       if Hashtbl.mem ctx.var_map name then
         failwith ("Variable declared twice: " ^ name);
@@ -60,7 +62,41 @@ and generate_statement (s : statement) (ctx : context) : string * context =
         { stack_index = new_stack_index; var_map = ctx_after_init.var_map }
       in
       (init_asm ^ "  push rax\n", new_ctx)
+
+and generate_statement (s : statement) (ctx : context) : string * context =
+  match s with
+  | Return exp ->
+      let exp_asm, updated_ctx = generate_exp exp ctx in
+      let epilogue = "  mov rsp, rbp\n  pop rbp\n  ret\n" in
+      (exp_asm ^ epilogue, updated_ctx)
   | Exp exp -> generate_exp exp ctx
+  | If (cond, then_stmt, else_opt) -> (
+      let cond_asm, ctx1 = generate_exp cond ctx in
+      let then_asm, ctx2 = generate_statement then_stmt ctx1 in
+      let else_label = new_label () in
+      let end_label = new_label () in
+
+      match else_opt with
+      | Some else_stmt ->
+          let else_asm, ctx3 = generate_statement else_stmt ctx2 in
+          let asm =
+            cond_asm ^ "  cmp rax, 0\n"
+            ^ Printf.sprintf "  je %s\n" else_label
+            ^ then_asm
+            ^ Printf.sprintf "  jmp %s\n" end_label
+            ^ Printf.sprintf "%s:\n" else_label
+            ^ else_asm
+            ^ Printf.sprintf "%s:\n" end_label
+          in
+          (asm, ctx3)
+      | None ->
+          let asm =
+            cond_asm ^ "  cmp rax, 0\n"
+            ^ Printf.sprintf "  je %s\n" end_label
+            ^ then_asm
+            ^ Printf.sprintf "%s:\n" end_label
+          in
+          (asm, ctx2))
 
 and generate_exp (e : exp) (ctx : context) : string * context =
   match e with
@@ -86,6 +122,22 @@ and generate_exp (e : exp) (ctx : context) : string * context =
         | LGNEGATION -> "  cmp rax, 0\n  mov rax, 0\n  sete al\n"
       in
       (inner_exp_asm ^ op_asm, updated_ctx)
+  | Conditional (cond, then_exp, else_exp) ->
+      let cond_asm, ctx1 = generate_exp cond ctx in
+      let then_asm, ctx2 = generate_exp then_exp ctx1 in
+      let else_asm, ctx3 = generate_exp else_exp ctx2 in
+      let else_label = new_label () in
+      let end_label = new_label () in
+      let asm =
+        cond_asm ^ "  cmp rax, 0\n"
+        ^ Printf.sprintf "  je %s\n" else_label
+        ^ then_asm
+        ^ Printf.sprintf "  jmp %s\n" end_label
+        ^ Printf.sprintf "%s:\n" else_label
+        ^ else_asm
+        ^ Printf.sprintf "%s:\n" end_label
+      in
+      (asm, ctx3)
   | CompoundAssign (name, op, exp) ->
       if not (Hashtbl.mem ctx.var_map name) then
         failwith ("Undeclared variable: " ^ name);
