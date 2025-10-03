@@ -206,8 +206,8 @@ let parse_fun_decl tokens =
   in
   let tokens = expect LPAREN tokens in
   let tokens = expect RPAREN tokens in
-  let tokens = expect RPAREN tokens in
   let tokens = expect LBRACE tokens in
+
   let rec parse_statements_until_brace acc tokens =
     match tokens with
     | RBRACE :: _ -> (List.rev acc, tokens)
@@ -215,6 +215,7 @@ let parse_fun_decl tokens =
         let stmt, rest = parse_statement tokens in
         parse_statements_until_brace (stmt :: acc) rest
   in
+
   let statements, tokens = parse_statements_until_brace [] tokens in
   let tokens = expect RBRACE tokens in
   (Fun (name, statements), tokens)
