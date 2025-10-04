@@ -99,10 +99,11 @@ type statement =
   | Return of exp
   | Exp of exp
   | If of exp * statement * statement option
+  | Block of block_item list
 
-type declaration = Declare of string * exp option
+and declaration = Declare of string * exp option
 
-type block_item =
+and block_item =
   | Statement of statement
   | Declaration of declaration
 

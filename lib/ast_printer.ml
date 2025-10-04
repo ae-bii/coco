@@ -39,7 +39,6 @@ let rec string_of_prog (p : prog) : string =
 and string_of_fun_decl level (f : fun_decl) : string =
   match f with
   | Fun (name, block_items) ->
-      (* Now takes a list of block_items *)
       let i = indent_space level in
       let i_plus_1 = indent_space (level + 1) in
       let items_str = List.map (string_of_block_item (level + 2)) block_items in
@@ -82,6 +81,10 @@ and string_of_statement level (s : statement) : string =
         | None -> ""
       in
       Printf.sprintf "%sIF\n%s\n%sTHEN\n%s%s" i cond_str i then_str else_str
+  | Block items ->
+      let items_str = List.map (string_of_block_item (level + 1)) items in
+      let body_str = String.concat "\n" items_str in
+      Printf.sprintf "%sBLOCK\n%s" i body_str
 
 and string_of_exp level (e : exp) : string =
   let i = indent_space level in
