@@ -19,21 +19,14 @@ let rec generate_prog (p : prog) : string =
 
 and generate_fun_decl (f : fun_decl) : string =
   match f with
-  | Fun (name, stmts) ->
+  | Fun (name, block_items) ->
       let prologue =
         Printf.sprintf "global _%s\n_%s:\n  push rbp\n  mov rbp, rsp\n" name
           name
       in
       let initial_context = { stack_index = 0; var_map = Hashtbl.create 16 } in
-      let body_asm, _ =
-        List.fold_left
-          (fun (asm, ctx) item ->
-            let new_asm, new_ctx = generate_block_item item ctx in
-            (asm ^ new_asm, new_ctx))
-          ("", initial_context) stmts
-      in
-
-      let last_item = List.nth_opt (List.rev stmts) 0 in
+      let body_asm, _ = generate_block block_items initial_context in
+      let last_item = List.nth_opt (List.rev block_items) 0 in
       let epilogue =
         match last_item with
         | Some (Statement (Return _)) -> ""
@@ -41,27 +34,60 @@ and generate_fun_decl (f : fun_decl) : string =
       in
       prologue ^ body_asm ^ epilogue
 
+and generate_block (items : block_item list) (ctx : context) : string * context
+    =
+  let block_ctx =
+    { stack_index = ctx.stack_index; var_map = Hashtbl.copy ctx.var_map }
+  in
+  let block_asm, _, vars_declared_in_block =
+    List.fold_left
+      (fun (asm, current_ctx, declared_vars) item ->
+        match item with
+        | Statement s ->
+            let new_asm, _ = generate_statement s current_ctx in
+            (asm ^ new_asm, current_ctx, declared_vars)
+        | Declaration d ->
+            let var_name, new_asm, new_ctx =
+              generate_declaration d current_ctx declared_vars
+            in
+            (asm ^ new_asm, new_ctx, var_name :: declared_vars))
+      ("", block_ctx, []) items
+  in
+  let dealloc_bytes = List.length vars_declared_in_block * 8 in
+  let dealloc_asm =
+    if dealloc_bytes > 0 then
+      Printf.sprintf "  add rsp, %d\n" dealloc_bytes
+    else
+      ""
+  in
+  (block_asm ^ dealloc_asm, ctx)
+
 and generate_block_item (i : block_item) (ctx : context) : string * context =
   match i with
   | Statement s -> generate_statement s ctx
-  | Declaration d -> generate_declaration d ctx
+  | Declaration d ->
+      let _name, asm, new_ctx = generate_declaration d ctx [] in
+      (asm, new_ctx)
 
-and generate_declaration (d : declaration) (ctx : context) : string * context =
+and generate_declaration (d : declaration) (ctx : context)
+    (scope_vars : string list) : string * string * context =
   match d with
   | Declare (name, exp_opt) ->
-      if Hashtbl.mem ctx.var_map name then
-        failwith ("Variable declared twice: " ^ name);
+      if List.mem name scope_vars then
+        failwith ("Variable declared twice in the same scope: " ^ name);
+
       let init_asm, ctx_after_init =
         match exp_opt with
         | Some e -> generate_exp e ctx
         | None -> ("  mov rax, 0\n", ctx)
       in
+
       let new_stack_index = ctx_after_init.stack_index - 8 in
       Hashtbl.add ctx_after_init.var_map name new_stack_index;
       let new_ctx =
         { stack_index = new_stack_index; var_map = ctx_after_init.var_map }
       in
-      (init_asm ^ "  push rax\n", new_ctx)
+      (name, init_asm ^ "  push rax\n", new_ctx)
 
 and generate_statement (s : statement) (ctx : context) : string * context =
   match s with
@@ -97,6 +123,7 @@ and generate_statement (s : statement) (ctx : context) : string * context =
             ^ Printf.sprintf "%s:\n" end_label
           in
           (asm, ctx2))
+  | Block block_items -> generate_block block_items ctx
 
 and generate_exp (e : exp) (ctx : context) : string * context =
   match e with
