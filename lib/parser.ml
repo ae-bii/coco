@@ -264,6 +264,17 @@ and parse_statement tokens =
           let else_stmt, after_else_stmt = parse_statement after_else in
           (If (cond_exp, then_stmt, Some else_stmt), after_else_stmt)
       | _ -> (If (cond_exp, then_stmt, None), after_then))
+  | LBRACE :: rest ->
+      let rec parse_block_items_until_brace acc tokens =
+        match tokens with
+        | RBRACE :: _ -> (List.rev acc, tokens) (* End of block *)
+        | _ ->
+            let item, rest_after_item = parse_block_item tokens in
+            parse_block_items_until_brace (item :: acc) rest_after_item
+      in
+      let items, after_items = parse_block_items_until_brace [] rest in
+      let after_brace = expect RBRACE after_items in
+      (Block items, after_brace)
   | _ ->
       let exp_node, tokens_after_exp = parse_exp tokens in
       let tokens_after_semicolon = expect SEMICOLON tokens_after_exp in
