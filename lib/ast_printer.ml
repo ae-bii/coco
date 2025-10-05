@@ -68,9 +68,12 @@ and string_of_statement level (s : statement) : string =
   | Return exp ->
       let exp_str = string_of_exp (level + 1) exp in
       Printf.sprintf "%sRETURN\n%s" i exp_str
-  | Exp exp ->
-      let exp_str = string_of_exp (level + 1) exp in
-      Printf.sprintf "%sEXP\n%s" i exp_str
+  | Exp exp_opt -> (
+      match exp_opt with
+      | Some exp ->
+          let exp_str = string_of_exp (level + 1) exp in
+          Printf.sprintf "%sEXP\n%s" i exp_str
+      | None -> Printf.sprintf "%sNULL_STATEMENT" i)
   | If (cond, then_stmt, else_opt) ->
       let cond_str = string_of_exp (level + 1) cond in
       let then_str = string_of_statement (level + 1) then_stmt in
@@ -85,6 +88,44 @@ and string_of_statement level (s : statement) : string =
       let items_str = List.map (string_of_block_item (level + 1)) items in
       let body_str = String.concat "\n" items_str in
       Printf.sprintf "%sBLOCK\n%s" i body_str
+  | For (init, cond, post, body) ->
+      let init_str =
+        match init with
+        | Some e -> string_of_exp (level + 2) e
+        | None -> indent_space (level + 2) ^ "None"
+      in
+      let cond_str = string_of_exp (level + 2) cond in
+      let post_str =
+        match post with
+        | Some e -> string_of_exp (level + 2) e
+        | None -> indent_space (level + 2) ^ "None"
+      in
+      let body_str = string_of_statement (level + 1) body in
+      Printf.sprintf
+        "%sFOR\n%s  init:\n%s\n%s  cond:\n%s\n%s  post:\n%s\n%sDO\n%s" i i
+        init_str i cond_str i post_str i body_str
+  | ForDecl (decl, cond, post, body) ->
+      let decl_str = string_of_declaration (level + 2) decl in
+      let cond_str = string_of_exp (level + 2) cond in
+      let post_str =
+        match post with
+        | Some e -> string_of_exp (level + 2) e
+        | None -> indent_space (level + 2) ^ "None"
+      in
+      let body_str = string_of_statement (level + 1) body in
+      Printf.sprintf
+        "%sFOR_DECL\n%s  init:\n%s\n%s  cond:\n%s\n%s  post:\n%s\n%sDO\n%s" i i
+        decl_str i cond_str i post_str i body_str
+  | While (cond, body) ->
+      let cond_str = string_of_exp (level + 1) cond in
+      let body_str = string_of_statement (level + 1) body in
+      Printf.sprintf "%sWHILE\n%s\n%sDO\n%s" i cond_str i body_str
+  | Do (body, cond) ->
+      let body_str = string_of_statement (level + 1) body in
+      let cond_str = string_of_exp (level + 1) cond in
+      Printf.sprintf "%sDO\n%s\n%sWHILE\n%s" i body_str i cond_str
+  | Break -> Printf.sprintf "%sBREAK" i
+  | Continue -> Printf.sprintf "%sCONTINUE" i
 
 and string_of_exp level (e : exp) : string =
   let i = indent_space level in
