@@ -237,6 +237,14 @@ and parse_primary_exp tokens =
       (exp_node, tokens_after_paren)
   | _ -> failwith "Invalid primary expression"
 
+and parse_exp_option tokens =
+  match tokens with
+  | SEMICOLON :: _ -> (None, tokens)
+  | RPAREN :: _ -> (None, tokens)
+  | _ ->
+      let exp, rest = parse_exp tokens in
+      (Some exp, rest)
+
 and parse_declaration tokens =
   match tokens with
   | INT :: ID name :: rest -> (
@@ -267,7 +275,7 @@ and parse_statement tokens =
   | LBRACE :: rest ->
       let rec parse_block_items_until_brace acc tokens =
         match tokens with
-        | RBRACE :: _ -> (List.rev acc, tokens) (* End of block *)
+        | RBRACE :: _ -> (List.rev acc, tokens)
         | _ ->
             let item, rest_after_item = parse_block_item tokens in
             parse_block_items_until_brace (item :: acc) rest_after_item
@@ -275,10 +283,56 @@ and parse_statement tokens =
       let items, after_items = parse_block_items_until_brace [] rest in
       let after_brace = expect RBRACE after_items in
       (Block items, after_brace)
+  | FOR :: LPAREN :: rest ->
+      let for_node, after_body =
+        if List.hd rest = INT then
+          let decl, after_decl = parse_declaration rest in
+          let cond_exp_opt, after_cond = parse_exp_option after_decl in
+          let cond_exp =
+            match cond_exp_opt with
+            | Some e -> e
+            | None -> Const 1
+          in
+          let after_semi = expect SEMICOLON after_cond in
+          let post_exp, after_post = parse_exp_option after_semi in
+          let after_paren = expect RPAREN after_post in
+          let body, after_body = parse_statement after_paren in
+          (ForDecl (decl, cond_exp, post_exp, body), after_body)
+        else
+          let init_exp, after_init = parse_exp_option rest in
+          let after_first_semi = expect SEMICOLON after_init in
+          let cond_exp_opt, after_cond = parse_exp_option after_first_semi in
+          let cond_exp =
+            match cond_exp_opt with
+            | Some e -> e
+            | None -> Const 1
+          in
+          let after_second_semi = expect SEMICOLON after_cond in
+          let post_exp, after_post = parse_exp_option after_second_semi in
+          let after_paren = expect RPAREN after_post in
+          let body, after_body = parse_statement after_paren in
+          (For (init_exp, cond_exp, post_exp, body), after_body)
+      in
+      (for_node, after_body)
+  | WHILE :: LPAREN :: rest ->
+      let cond, after_cond = parse_exp rest in
+      let after_paren = expect RPAREN after_cond in
+      let body, after_body = parse_statement after_paren in
+      (While (cond, body), after_body)
+  | DO :: rest ->
+      let body, after_body = parse_statement rest in
+      let after_while = expect WHILE after_body in
+      let after_lparen = expect LPAREN after_while in
+      let cond, after_cond = parse_exp after_lparen in
+      let after_rparen = expect RPAREN after_cond in
+      let after_semi = expect SEMICOLON after_rparen in
+      (Do (body, cond), after_semi)
+  | BREAK :: rest -> (Break, expect SEMICOLON rest)
+  | CONTINUE :: rest -> (Continue, expect SEMICOLON rest)
   | _ ->
-      let exp_node, tokens_after_exp = parse_exp tokens in
-      let tokens_after_semicolon = expect SEMICOLON tokens_after_exp in
-      (Exp exp_node, tokens_after_semicolon)
+      let exp_opt, after_exp = parse_exp_option tokens in
+      let after_semi = expect SEMICOLON after_exp in
+      (Exp exp_opt, after_semi)
 
 and parse_block_item tokens =
   match tokens with
