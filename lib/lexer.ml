@@ -62,6 +62,11 @@ let string_to_token s =
     | "return" -> RETURN
     | "if" -> IF
     | "else" -> ELSE
+    | "for" -> FOR
+    | "while" -> WHILE
+    | "do" -> DO
+    | "break" -> BREAK
+    | "continue" -> CONTINUE
     (* syntax *)
     | "(" -> LPAREN
     | ")" -> RPAREN
