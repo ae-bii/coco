@@ -55,6 +55,11 @@ type token =
   | ELSE
   | QUESTION
   | COLON
+  | FOR
+  | WHILE
+  | DO
+  | BREAK
+  | CONTINUE
 
 type unop =
   | NEGATION
@@ -97,9 +102,15 @@ type exp =
 
 type statement =
   | Return of exp
-  | Exp of exp
+  | Exp of exp option
   | If of exp * statement * statement option
   | Block of block_item list
+  | For of exp option * exp * exp option * statement
+  | ForDecl of declaration * exp * exp option * statement
+  | While of exp * statement
+  | Do of statement * exp
+  | Break
+  | Continue
 
 and declaration = Declare of string * exp option
 
