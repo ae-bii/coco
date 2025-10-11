@@ -3,6 +3,8 @@ open Ast
 type context = {
   stack_index : int;
   var_map : (string, int) Hashtbl.t;
+  break_label : string option;
+  continue_label : string option;
 }
 
 let label_counter = ref 0
@@ -24,7 +26,12 @@ and generate_fun_decl (f : fun_decl) : string =
         Printf.sprintf "global _%s\n_%s:\n  push rbp\n  mov rbp, rsp\n" name
           name
       in
-      let initial_context = { stack_index = 0; var_map = Hashtbl.create 16 } in
+      let initial_context =
+        { stack_index = 0;
+          var_map = Hashtbl.create 16;
+          break_label = None;
+          continue_label = None }
+      in
       let body_asm, _ = generate_block block_items initial_context in
       let last_item = List.nth_opt (List.rev block_items) 0 in
       let epilogue =
@@ -37,7 +44,10 @@ and generate_fun_decl (f : fun_decl) : string =
 and generate_block (items : block_item list) (ctx : context) : string * context
     =
   let block_ctx =
-    { stack_index = ctx.stack_index; var_map = Hashtbl.copy ctx.var_map }
+    { stack_index = ctx.stack_index;
+      var_map = Hashtbl.copy ctx.var_map;
+      break_label = ctx.break_label;
+      continue_label = ctx.continue_label }
   in
   let block_asm, _, vars_declared_in_block =
     List.fold_left
@@ -85,7 +95,10 @@ and generate_declaration (d : declaration) (ctx : context)
       let new_stack_index = ctx_after_init.stack_index - 8 in
       Hashtbl.add ctx_after_init.var_map name new_stack_index;
       let new_ctx =
-        { stack_index = new_stack_index; var_map = ctx_after_init.var_map }
+        { stack_index = new_stack_index;
+          var_map = ctx_after_init.var_map;
+          break_label = ctx_after_init.break_label;
+          continue_label = ctx_after_init.continue_label }
       in
       (name, init_asm ^ "  push rax\n", new_ctx)
 
@@ -95,7 +108,10 @@ and generate_statement (s : statement) (ctx : context) : string * context =
       let exp_asm, updated_ctx = generate_exp exp ctx in
       let epilogue = "  mov rsp, rbp\n  pop rbp\n  ret\n" in
       (exp_asm ^ epilogue, updated_ctx)
-  | Exp exp -> generate_exp exp ctx
+  | Exp exp_opt -> (
+      match exp_opt with
+      | Some e -> generate_exp e ctx
+      | None -> ("", ctx))
   | If (cond, then_stmt, else_opt) -> (
       let cond_asm, ctx1 = generate_exp cond ctx in
       let then_asm, ctx2 = generate_statement then_stmt ctx1 in
@@ -124,6 +140,138 @@ and generate_statement (s : statement) (ctx : context) : string * context =
           in
           (asm, ctx2))
   | Block block_items -> generate_block block_items ctx
+  | While (cond, body_stmt) ->
+      let start_label = new_label () in
+      let end_label = new_label () in
+      let cond_asm, ctx1 = generate_exp cond ctx in
+      (* body runs with break -> end_label and continue -> start_label *)
+      let body_ctx =
+        { stack_index = ctx1.stack_index;
+          var_map = Hashtbl.copy ctx1.var_map;
+          break_label = Some end_label;
+          continue_label = Some start_label }
+      in
+      let body_asm, _ = generate_statement body_stmt body_ctx in
+      let asm =
+        Printf.sprintf "%s:\n" start_label
+        ^ cond_asm ^ "  cmp rax, 0\n"
+        ^ Printf.sprintf "  je %s\n" end_label
+        ^ body_asm
+        ^ Printf.sprintf "  jmp %s\n" start_label
+        ^ Printf.sprintf "%s:\n" end_label
+      in
+      (asm, ctx)
+  | Do (body_stmt, cond) ->
+      let start_label = new_label () in
+      let end_label = new_label () in
+      let body_ctx =
+        { stack_index = ctx.stack_index;
+          var_map = Hashtbl.copy ctx.var_map;
+          break_label = Some end_label;
+          continue_label = Some end_label }
+      in
+      let body_asm, _ = generate_statement body_stmt body_ctx in
+      let cond_asm, _ = generate_exp cond ctx in
+      let asm =
+        Printf.sprintf "%s:\n" start_label
+        ^ body_asm
+        ^ cond_asm ^ "  cmp rax, 0\n"
+        ^ Printf.sprintf "  jne %s\n" start_label
+        ^ Printf.sprintf "%s:\n" end_label
+      in
+      (asm, ctx)
+  | For (init_opt, cond, post_opt, body_stmt) ->
+      (* The for-loop header and body form a block with its own scope. *)
+      let header_ctx =
+        { stack_index = ctx.stack_index; var_map = Hashtbl.copy ctx.var_map;
+          break_label = ctx.break_label; continue_label = ctx.continue_label }
+      in
+      (* init *)
+      let init_asm, header_ctx =
+        match init_opt with
+        | Some e -> generate_exp e header_ctx
+        | None -> ("", header_ctx)
+      in
+      let start_label = new_label () in
+      let post_label = new_label () in
+      let end_label = new_label () in
+      (* condition *)
+      let cond_asm, _ = generate_exp cond header_ctx in
+      (* body runs with break -> end_label and continue -> post_label *)
+      let body_ctx =
+        { stack_index = header_ctx.stack_index;
+          var_map = Hashtbl.copy header_ctx.var_map;
+          break_label = Some end_label;
+          continue_label = Some post_label }
+      in
+      let body_asm, _ = generate_statement body_stmt body_ctx in
+      (* post expression *)
+      let post_asm, _ =
+        match post_opt with
+        | Some e -> generate_exp e header_ctx
+        | None -> ("", header_ctx)
+      in
+      let dealloc_bytes = ctx.stack_index - header_ctx.stack_index in
+      let dealloc_asm = if dealloc_bytes > 0 then Printf.sprintf "  add rsp, %d\n" dealloc_bytes else "" in
+      let asm =
+        init_asm
+        ^ Printf.sprintf "%s:\n" start_label
+        ^ cond_asm ^ "  cmp rax, 0\n"
+        ^ Printf.sprintf "  je %s\n" end_label
+        ^ body_asm
+        ^ Printf.sprintf "%s:\n" post_label
+        ^ post_asm
+        ^ Printf.sprintf "  jmp %s\n" start_label
+        ^ Printf.sprintf "%s:\n" end_label
+        ^ dealloc_asm
+      in
+      (asm, ctx)
+  | ForDecl (decl, cond, post_opt, body_stmt) ->
+      (* Similar to For but first item is a declaration in the for header. *)
+      let header_ctx =
+        { stack_index = ctx.stack_index; var_map = Hashtbl.copy ctx.var_map;
+          break_label = ctx.break_label; continue_label = ctx.continue_label }
+      in
+      let _name, init_asm, header_ctx = generate_declaration decl header_ctx [] in
+      let start_label = new_label () in
+      let post_label = new_label () in
+      let end_label = new_label () in
+      let cond_asm, _ = generate_exp cond header_ctx in
+      let body_ctx =
+        { stack_index = header_ctx.stack_index;
+          var_map = Hashtbl.copy header_ctx.var_map;
+          break_label = Some end_label;
+          continue_label = Some post_label }
+      in
+      let body_asm, _ = generate_statement body_stmt body_ctx in
+      let post_asm, _ =
+        match post_opt with
+        | Some e -> generate_exp e header_ctx
+        | None -> ("", header_ctx)
+      in
+      let dealloc_bytes = ctx.stack_index - header_ctx.stack_index in
+      let dealloc_asm = if dealloc_bytes > 0 then Printf.sprintf "  add rsp, %d\n" dealloc_bytes else "" in
+      let asm =
+        init_asm
+        ^ Printf.sprintf "%s:\n" start_label
+        ^ cond_asm ^ "  cmp rax, 0\n"
+        ^ Printf.sprintf "  je %s\n" end_label
+        ^ body_asm
+        ^ Printf.sprintf "%s:\n" post_label
+        ^ post_asm
+        ^ Printf.sprintf "  jmp %s\n" start_label
+        ^ Printf.sprintf "%s:\n" end_label
+        ^ dealloc_asm
+      in
+      (asm, ctx)
+  | Break -> (
+      match ctx.break_label with
+      | Some lbl -> (Printf.sprintf "  jmp %s\n" lbl, ctx)
+      | None -> failwith "'break' used outside of a loop or switch")
+  | Continue -> (
+      match ctx.continue_label with
+      | Some lbl -> (Printf.sprintf "  jmp %s\n" lbl, ctx)
+      | None -> failwith "'continue' used outside of a loop")
 
 and generate_exp (e : exp) (ctx : context) : string * context =
   match e with
