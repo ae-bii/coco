@@ -230,6 +230,24 @@ and parse_postfix_exp tokens =
 and parse_primary_exp tokens =
   match tokens with
   | NUM i :: rest -> (Const i, rest)
+  | ID s :: LPAREN :: rest ->
+      (* function call: ID '(' [args] ')' *)
+      let rec parse_args acc tokens =
+        match tokens with
+        | RPAREN :: rest_after -> (List.rev acc, rest_after)
+        | _ ->
+            let arg, after_arg = parse_assignment_exp tokens in
+            (match after_arg with
+            | COMMA :: rest_after -> parse_args (arg :: acc) rest_after
+            | RPAREN :: rest_after -> (List.rev (arg :: acc), rest_after)
+            | _ -> failwith "Expected , or ) in function call")
+      in
+      let args, remaining_after_args =
+        match rest with
+        | RPAREN :: r -> ([], r)
+        | _ -> parse_args [] rest
+      in
+      (FunCall (s, args), remaining_after_args)
   | ID s :: rest -> (Var s, rest)
   | LPAREN :: rest ->
       let exp_node, tokens_after_exp = parse_exp rest in
@@ -350,20 +368,34 @@ let parse_fun_decl tokens =
     | ID s :: rest -> (s, rest)
     | _ -> failwith "Expected function name"
   in
+  (* parse parameter list: '(' [ 'int' ID {',' 'int' ID} ] ')' *)
   let tokens = expect LPAREN tokens in
-  let tokens = expect RPAREN tokens in
-  let tokens = expect LBRACE tokens in
-  let rec parse_block_items_until_brace acc tokens =
+  let rec parse_params acc tokens =
     match tokens with
-    | RBRACE :: _ -> (List.rev acc, tokens)
-    | _ ->
-        let item, rest = parse_block_item tokens in
-        parse_block_items_until_brace (item :: acc) rest
+    | RPAREN :: rest -> (List.rev acc, rest)
+    | INT :: ID pname :: rest -> (
+        match rest with
+        | COMMA :: more -> parse_params (pname :: acc) more
+        | RPAREN :: more -> (List.rev (pname :: acc), more)
+        | _ -> failwith "Invalid function parameter list")
+    | _ -> failwith "Invalid function parameter list"
   in
-
-  let block_items, tokens = parse_block_items_until_brace [] tokens in
-  let tokens = expect RBRACE tokens in
-  (Fun (name, block_items), tokens)
+  let params, tokens = parse_params [] tokens in
+  (* now either a semicolon (declaration) or a function body '{' ... '}' *)
+  match tokens with
+  | SEMICOLON :: rest -> (Fun (name, params, None), rest)
+  | LBRACE :: rest ->
+      let rec parse_block_items_until_brace acc tokens =
+        match tokens with
+        | RBRACE :: _ -> (List.rev acc, tokens)
+        | _ ->
+            let item, rest = parse_block_item tokens in
+            parse_block_items_until_brace (item :: acc) rest
+      in
+      let block_items, after_items = parse_block_items_until_brace [] rest in
+      let after_brace = expect RBRACE after_items in
+      (Fun (name, params, Some block_items), after_brace)
+  | _ -> failwith "Expected function body or semicolon"
 
 let parse tokens =
   let tokens_no_whitespace = List.filter (fun t -> t <> WHITESPACE) tokens in
