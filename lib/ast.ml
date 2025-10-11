@@ -89,6 +89,7 @@ type binop =
 
 type exp =
   | Const of int
+  | FunCall of string * exp list
   | UnOp of unop * exp
   | BinOp of exp * binop * exp
   | Var of string
@@ -118,5 +119,5 @@ and block_item =
   | Statement of statement
   | Declaration of declaration
 
-type fun_decl = Fun of string * block_item list
+type fun_decl = Fun of string * string list * block_item list option
 type prog = Prog of fun_decl list
