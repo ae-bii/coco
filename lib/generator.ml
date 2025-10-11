@@ -16,38 +16,169 @@ let new_label () =
 let rec generate_prog (p : prog) : string =
   match p with
   | Prog funcs ->
+      (* collect function definitions and calls to emit externs for undefined callees *)
+      let defined =
+        List.fold_left
+          (fun s f ->
+            match f with
+            | Fun (name, _, body_opt) ->
+                if body_opt <> None then
+                  name :: s
+                else
+                  s)
+          [] funcs
+      in
+      let rec collect_calls_from_exp acc e =
+        match e with
+        | FunCall (n, args) ->
+            List.fold_left collect_calls_from_exp (n :: acc) args
+        | UnOp (_, inner) -> collect_calls_from_exp acc inner
+        | Conditional (c, t, e2) ->
+            collect_calls_from_exp
+              (collect_calls_from_exp (collect_calls_from_exp acc c) t)
+              e2
+        | BinOp (l, _, r) ->
+            collect_calls_from_exp (collect_calls_from_exp acc l) r
+        | Assign (_, rhs) -> collect_calls_from_exp acc rhs
+        | CompoundAssign (_, _, rhs) -> collect_calls_from_exp acc rhs
+        | PostfixInc _
+        | PostfixDec _
+        | PrefixInc _
+        | PrefixDec _
+        | Const _
+        | Var _ -> acc
+      in
+      let rec collect_calls_from_stmt acc s =
+        match s with
+        | Return e -> collect_calls_from_exp acc e
+        | Exp (Some e) -> collect_calls_from_exp acc e
+        | Exp None -> acc
+        | If (c, t, eo) -> (
+            let acc = collect_calls_from_exp acc c in
+            let acc = collect_calls_from_stmt acc t in
+            match eo with
+            | Some es -> collect_calls_from_stmt acc es
+            | None -> acc)
+        | Block items ->
+            List.fold_left
+              (fun a it ->
+                match it with
+                | Statement st -> collect_calls_from_stmt a st
+                | Declaration (Declare (_, Some e)) ->
+                    collect_calls_from_exp a e
+                | Declaration _ -> a)
+              acc items
+        | For (init_opt, cond, post_opt, body) ->
+            let acc =
+              match init_opt with
+              | Some e -> collect_calls_from_exp acc e
+              | None -> acc
+            in
+            let acc = collect_calls_from_exp acc cond in
+            let acc =
+              match post_opt with
+              | Some e -> collect_calls_from_exp acc e
+              | None -> acc
+            in
+            collect_calls_from_stmt acc body
+        | ForDecl (Declare (_, init_opt), cond, post_opt, body) ->
+            let acc =
+              match init_opt with
+              | Some e -> collect_calls_from_exp acc e
+              | None -> acc
+            in
+            let acc = collect_calls_from_exp acc cond in
+            let acc =
+              match post_opt with
+              | Some e2 -> collect_calls_from_exp acc e2
+              | None -> acc
+            in
+            collect_calls_from_stmt acc body
+        | While (c, b) ->
+            collect_calls_from_stmt (collect_calls_from_exp acc c) b
+        | Do (b, c) -> collect_calls_from_stmt (collect_calls_from_exp acc c) b
+        | Break | Continue -> acc
+      in
+      let collect_calls_from_block acc items =
+        List.fold_left
+          (fun a it ->
+            match it with
+            | Statement st -> collect_calls_from_stmt a st
+            | Declaration (Declare (_, Some e)) -> collect_calls_from_exp a e
+            | Declaration _ -> a)
+          acc items
+      in
+      let all_calls =
+        List.fold_left
+          (fun acc f ->
+            match f with
+            | Fun (_, _, Some body) -> collect_calls_from_block acc body
+            | Fun (_, _, None) -> acc)
+          [] funcs
+      in
+      let externs =
+        List.filter (fun n -> not (List.mem n defined)) all_calls
+        |> List.sort_uniq String.compare
+      in
+      let externs_asm =
+        if externs = [] then
+          ""
+        else
+          String.concat ""
+            (List.map (fun n -> Printf.sprintf "extern _%s\n" n) externs)
+          ^ "\n"
+      in
       let funcs_asm = List.map generate_fun_decl funcs |> String.concat "" in
-      "section .text\n" ^ funcs_asm
+      externs_asm ^ "section .text\n" ^ funcs_asm
 
 and generate_fun_decl (f : fun_decl) : string =
   match f with
-  | Fun (name, block_items) ->
+  | Fun (name, params, body_opt) -> (
       let prologue =
         Printf.sprintf "global _%s\n_%s:\n  push rbp\n  mov rbp, rsp\n" name
           name
       in
       let initial_context =
-        { stack_index = 0;
+        {
+          stack_index = 0;
           var_map = Hashtbl.create 16;
           break_label = None;
-          continue_label = None }
+          continue_label = None;
+        }
       in
-      let body_asm, _ = generate_block block_items initial_context in
-      let last_item = List.nth_opt (List.rev block_items) 0 in
-      let epilogue =
-        match last_item with
-        | Some (Statement (Return _)) -> ""
-        | _ -> "  mov rax, 0\n  mov rsp, rbp\n  pop rbp\n  ret\n"
+      let ctx_with_params =
+        let tbl = Hashtbl.copy initial_context.var_map in
+        let rec add_params offset = function
+          | [] -> ()
+          | p :: ps ->
+              Hashtbl.add tbl p offset;
+              add_params (offset + 8) ps
+        in
+        add_params 16 params;
+        { initial_context with var_map = tbl }
       in
-      prologue ^ body_asm ^ epilogue
+      match body_opt with
+      | None -> "" (* function prototype: no code generated *)
+      | Some block_items ->
+          let body_asm, _ = generate_block block_items ctx_with_params in
+          (* check last statement to decide whether to emit default epilogue *)
+          let last_item = List.nth_opt (List.rev block_items) 0 in
+          let epilogue =
+            match last_item with
+            | Some (Statement (Return _)) -> ""
+            | _ -> "  mov rax, 0\n  mov rsp, rbp\n  pop rbp\n  ret\n"
+          in
+          prologue ^ body_asm ^ epilogue)
 
 and generate_block (items : block_item list) (ctx : context) : string * context
     =
   let block_ctx =
-    { stack_index = ctx.stack_index;
+    {
+      stack_index = ctx.stack_index;
       var_map = Hashtbl.copy ctx.var_map;
       break_label = ctx.break_label;
-      continue_label = ctx.continue_label }
+      continue_label = ctx.continue_label;
+    }
   in
   let block_asm, _, vars_declared_in_block =
     List.fold_left
@@ -95,10 +226,12 @@ and generate_declaration (d : declaration) (ctx : context)
       let new_stack_index = ctx_after_init.stack_index - 8 in
       Hashtbl.add ctx_after_init.var_map name new_stack_index;
       let new_ctx =
-        { stack_index = new_stack_index;
+        {
+          stack_index = new_stack_index;
           var_map = ctx_after_init.var_map;
           break_label = ctx_after_init.break_label;
-          continue_label = ctx_after_init.continue_label }
+          continue_label = ctx_after_init.continue_label;
+        }
       in
       (name, init_asm ^ "  push rax\n", new_ctx)
 
@@ -146,10 +279,12 @@ and generate_statement (s : statement) (ctx : context) : string * context =
       let cond_asm, ctx1 = generate_exp cond ctx in
       (* body runs with break -> end_label and continue -> start_label *)
       let body_ctx =
-        { stack_index = ctx1.stack_index;
+        {
+          stack_index = ctx1.stack_index;
           var_map = Hashtbl.copy ctx1.var_map;
           break_label = Some end_label;
-          continue_label = Some start_label }
+          continue_label = Some start_label;
+        }
       in
       let body_asm, _ = generate_statement body_stmt body_ctx in
       let asm =
@@ -165,26 +300,30 @@ and generate_statement (s : statement) (ctx : context) : string * context =
       let start_label = new_label () in
       let end_label = new_label () in
       let body_ctx =
-        { stack_index = ctx.stack_index;
+        {
+          stack_index = ctx.stack_index;
           var_map = Hashtbl.copy ctx.var_map;
           break_label = Some end_label;
-          continue_label = Some end_label }
+          continue_label = Some end_label;
+        }
       in
       let body_asm, _ = generate_statement body_stmt body_ctx in
       let cond_asm, _ = generate_exp cond ctx in
       let asm =
         Printf.sprintf "%s:\n" start_label
-        ^ body_asm
-        ^ cond_asm ^ "  cmp rax, 0\n"
+        ^ body_asm ^ cond_asm ^ "  cmp rax, 0\n"
         ^ Printf.sprintf "  jne %s\n" start_label
         ^ Printf.sprintf "%s:\n" end_label
       in
       (asm, ctx)
   | For (init_opt, cond, post_opt, body_stmt) ->
-      (* The for-loop header and body form a block with its own scope. *)
       let header_ctx =
-        { stack_index = ctx.stack_index; var_map = Hashtbl.copy ctx.var_map;
-          break_label = ctx.break_label; continue_label = ctx.continue_label }
+        {
+          stack_index = ctx.stack_index;
+          var_map = Hashtbl.copy ctx.var_map;
+          break_label = ctx.break_label;
+          continue_label = ctx.continue_label;
+        }
       in
       (* init *)
       let init_asm, header_ctx =
@@ -195,14 +334,15 @@ and generate_statement (s : statement) (ctx : context) : string * context =
       let start_label = new_label () in
       let post_label = new_label () in
       let end_label = new_label () in
-      (* condition *)
       let cond_asm, _ = generate_exp cond header_ctx in
       (* body runs with break -> end_label and continue -> post_label *)
       let body_ctx =
-        { stack_index = header_ctx.stack_index;
+        {
+          stack_index = header_ctx.stack_index;
           var_map = Hashtbl.copy header_ctx.var_map;
           break_label = Some end_label;
-          continue_label = Some post_label }
+          continue_label = Some post_label;
+        }
       in
       let body_asm, _ = generate_statement body_stmt body_ctx in
       (* post expression *)
@@ -212,7 +352,12 @@ and generate_statement (s : statement) (ctx : context) : string * context =
         | None -> ("", header_ctx)
       in
       let dealloc_bytes = ctx.stack_index - header_ctx.stack_index in
-      let dealloc_asm = if dealloc_bytes > 0 then Printf.sprintf "  add rsp, %d\n" dealloc_bytes else "" in
+      let dealloc_asm =
+        if dealloc_bytes > 0 then
+          Printf.sprintf "  add rsp, %d\n" dealloc_bytes
+        else
+          ""
+      in
       let asm =
         init_asm
         ^ Printf.sprintf "%s:\n" start_label
@@ -227,21 +372,28 @@ and generate_statement (s : statement) (ctx : context) : string * context =
       in
       (asm, ctx)
   | ForDecl (decl, cond, post_opt, body_stmt) ->
-      (* Similar to For but first item is a declaration in the for header. *)
       let header_ctx =
-        { stack_index = ctx.stack_index; var_map = Hashtbl.copy ctx.var_map;
-          break_label = ctx.break_label; continue_label = ctx.continue_label }
+        {
+          stack_index = ctx.stack_index;
+          var_map = Hashtbl.copy ctx.var_map;
+          break_label = ctx.break_label;
+          continue_label = ctx.continue_label;
+        }
       in
-      let _name, init_asm, header_ctx = generate_declaration decl header_ctx [] in
+      let _name, init_asm, header_ctx =
+        generate_declaration decl header_ctx []
+      in
       let start_label = new_label () in
       let post_label = new_label () in
       let end_label = new_label () in
       let cond_asm, _ = generate_exp cond header_ctx in
       let body_ctx =
-        { stack_index = header_ctx.stack_index;
+        {
+          stack_index = header_ctx.stack_index;
           var_map = Hashtbl.copy header_ctx.var_map;
           break_label = Some end_label;
-          continue_label = Some post_label }
+          continue_label = Some post_label;
+        }
       in
       let body_asm, _ = generate_statement body_stmt body_ctx in
       let post_asm, _ =
@@ -250,7 +402,12 @@ and generate_statement (s : statement) (ctx : context) : string * context =
         | None -> ("", header_ctx)
       in
       let dealloc_bytes = ctx.stack_index - header_ctx.stack_index in
-      let dealloc_asm = if dealloc_bytes > 0 then Printf.sprintf "  add rsp, %d\n" dealloc_bytes else "" in
+      let dealloc_asm =
+        if dealloc_bytes > 0 then
+          Printf.sprintf "  add rsp, %d\n" dealloc_bytes
+        else
+          ""
+      in
       let asm =
         init_asm
         ^ Printf.sprintf "%s:\n" start_label
@@ -276,6 +433,30 @@ and generate_statement (s : statement) (ctx : context) : string * context =
 and generate_exp (e : exp) (ctx : context) : string * context =
   match e with
   | Const i -> (Printf.sprintf "  mov rax, %d\n" i, ctx)
+  | FunCall (fname, args) ->
+      (* evaluate args left to right to preserve side-effects, collect their asm,
+         then emit the code in reverse order so we push the last arg first. *)
+      let arg_asms, final_ctx =
+        List.fold_left
+          (fun (acc_asms, c) arg ->
+            let a_asm, c2 = generate_exp arg c in
+            (acc_asms @ [ a_asm ], c2))
+          ([], ctx) args
+      in
+      let asm_args =
+        arg_asms |> List.rev
+        |> List.map (fun a -> a ^ "  push rax\n")
+        |> String.concat ""
+      in
+      let call_asm = Printf.sprintf "  call _%s\n" fname in
+      let cleanup_bytes = List.length args * 8 in
+      let cleanup_asm =
+        if cleanup_bytes > 0 then
+          Printf.sprintf "  add rsp, %d\n" cleanup_bytes
+        else
+          ""
+      in
+      (asm_args ^ call_asm ^ cleanup_asm, final_ctx)
   | Var name ->
       if not (Hashtbl.mem ctx.var_map name) then
         failwith ("Undeclared variable: " ^ name);
