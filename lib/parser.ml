@@ -235,9 +235,9 @@ and parse_primary_exp tokens =
       let rec parse_args acc tokens =
         match tokens with
         | RPAREN :: rest_after -> (List.rev acc, rest_after)
-        | _ ->
+        | _ -> (
             let arg, after_arg = parse_assignment_exp tokens in
-            (match after_arg with
+            match after_arg with
             | COMMA :: rest_after -> parse_args (arg :: acc) rest_after
             | RPAREN :: rest_after -> (List.rev (arg :: acc), rest_after)
             | _ -> failwith "Expected , or ) in function call")
