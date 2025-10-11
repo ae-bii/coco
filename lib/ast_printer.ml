@@ -49,8 +49,8 @@ and string_of_fun_decl level (f : fun_decl) : string =
             String.concat "\n" items_str
         | None -> "(declaration)"
       in
-      Printf.sprintf "%sFUN INT %s:\n%sparams: (%s)\n%sbody:\n%s" i name i_plus_1
-        params_str i_plus_1 body_str
+      Printf.sprintf "%sFUN INT %s:\n%sparams: (%s)\n%sbody:\n%s" i name
+        i_plus_1 params_str i_plus_1 body_str
 
 and string_of_block_item level (bi : block_item) : string =
   match bi with
@@ -139,7 +139,9 @@ and string_of_exp level (e : exp) : string =
   | Const i_val -> Printf.sprintf "%sInt<%d>" i i_val
   | Var name -> Printf.sprintf "%sVar<\"%s\">" i name
   | FunCall (fname, args) ->
-      let args_str = String.concat ",\n" (List.map (string_of_exp (level + 1)) args) in
+      let args_str =
+        String.concat ",\n" (List.map (string_of_exp (level + 1)) args)
+      in
       Printf.sprintf "%sFunCall<%s>(\n%s\n%s)" i fname args_str i
   | Assign (name, exp) ->
       let exp_str = string_of_exp (level + 1) exp in
