@@ -11,6 +11,11 @@ let () =
 
   let tokens = Lexer.lex intput_filename in
   let ast = Parser.parse tokens in
+  (* validate AST for functions and calls *)
+  (try Coco.Validator.validate_prog ast
+   with Failure msg ->
+     Printf.eprintf "%s\n" msg;
+     exit 255);
   let asm_code = Generator.generate ast in
 
   write_to_file output_filename asm_code;
