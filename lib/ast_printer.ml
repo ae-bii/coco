@@ -38,13 +38,19 @@ let rec string_of_prog (p : prog) : string =
 
 and string_of_fun_decl level (f : fun_decl) : string =
   match f with
-  | Fun (name, block_items) ->
+  | Fun (name, params, body_opt) ->
       let i = indent_space level in
       let i_plus_1 = indent_space (level + 1) in
-      let items_str = List.map (string_of_block_item (level + 2)) block_items in
-      let body_str = String.concat "\n" items_str in
-      Printf.sprintf "%sFUN INT %s:\n%sparams: ()\n%sbody:\n%s" i name i_plus_1
-        i_plus_1 body_str
+      let params_str = String.concat ", " params in
+      let body_str =
+        match body_opt with
+        | Some items ->
+            let items_str = List.map (string_of_block_item (level + 2)) items in
+            String.concat "\n" items_str
+        | None -> "(declaration)"
+      in
+      Printf.sprintf "%sFUN INT %s:\n%sparams: (%s)\n%sbody:\n%s" i name i_plus_1
+        params_str i_plus_1 body_str
 
 and string_of_block_item level (bi : block_item) : string =
   match bi with
@@ -132,6 +138,9 @@ and string_of_exp level (e : exp) : string =
   match e with
   | Const i_val -> Printf.sprintf "%sInt<%d>" i i_val
   | Var name -> Printf.sprintf "%sVar<\"%s\">" i name
+  | FunCall (fname, args) ->
+      let args_str = String.concat ",\n" (List.map (string_of_exp (level + 1)) args) in
+      Printf.sprintf "%sFunCall<%s>(\n%s\n%s)" i fname args_str i
   | Assign (name, exp) ->
       let exp_str = string_of_exp (level + 1) exp in
       Printf.sprintf "%sASSIGN to \"%s\"\n%s" i name exp_str
