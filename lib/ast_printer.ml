@@ -32,9 +32,16 @@ let indent_space level = String.make (level * 4) ' '
 
 let rec string_of_prog (p : prog) : string =
   match p with
-  | Prog funcs ->
-      let funcs_str = List.map (string_of_fun_decl 0) funcs in
-      String.concat "\n\n" funcs_str
+  | Prog items ->
+      let strs =
+        List.map
+          (fun it ->
+            match it with
+            | FunDecl f -> string_of_fun_decl 0 f
+            | VarDecl d -> string_of_declaration 0 d)
+          items
+      in
+      String.concat "\n\n" strs
 
 and string_of_fun_decl level (f : fun_decl) : string =
   match f with
