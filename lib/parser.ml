@@ -402,12 +402,12 @@ let parse tokens =
   let rec parse_all_items acc tokens =
     match tokens with
     | [] -> List.rev acc
-  | INT :: ID _ :: LPAREN :: _ ->
-    let func, rest = parse_fun_decl tokens in
-    parse_all_items (FunDecl func :: acc) rest
-  | INT :: _ ->
-    let decl, rest = parse_declaration tokens in
-    parse_all_items (VarDecl decl :: acc) rest
+    | INT :: ID _ :: LPAREN :: _ ->
+        let func, rest = parse_fun_decl tokens in
+        parse_all_items (FunDecl func :: acc) rest
+    | INT :: _ ->
+        let decl, rest = parse_declaration tokens in
+        parse_all_items (VarDecl decl :: acc) rest
     | _ -> failwith "Top-level items must be function or variable declarations"
   in
   let all_items = parse_all_items [] tokens_no_whitespace in
