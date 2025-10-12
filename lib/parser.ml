@@ -399,12 +399,16 @@ let parse_fun_decl tokens =
 
 let parse tokens =
   let tokens_no_whitespace = List.filter (fun t -> t <> WHITESPACE) tokens in
-  let rec parse_all_functions acc tokens =
+  let rec parse_all_items acc tokens =
     match tokens with
     | [] -> List.rev acc
-    | _ ->
-        let func, rest = parse_fun_decl tokens in
-        parse_all_functions (func :: acc) rest
+  | INT :: ID _ :: LPAREN :: _ ->
+    let func, rest = parse_fun_decl tokens in
+    parse_all_items (FunDecl func :: acc) rest
+  | INT :: _ ->
+    let decl, rest = parse_declaration tokens in
+    parse_all_items (VarDecl decl :: acc) rest
+    | _ -> failwith "Top-level items must be function or variable declarations"
   in
-  let all_funcs = parse_all_functions [] tokens_no_whitespace in
-  Prog all_funcs
+  let all_items = parse_all_items [] tokens_no_whitespace in
+  Prog all_items
