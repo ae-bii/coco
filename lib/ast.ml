@@ -120,4 +120,9 @@ and block_item =
   | Declaration of declaration
 
 type fun_decl = Fun of string * string list * block_item list option
-type prog = Prog of fun_decl list
+
+type toplevel_item =
+  | FunDecl of fun_decl
+  | VarDecl of declaration
+
+type prog = Prog of toplevel_item list
