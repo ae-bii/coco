@@ -6,10 +6,13 @@ let write_to_file filename content =
   close_out oc
 
 let () =
-  let intput_filename = Sys.argv.(1) in
-  let output_filename = Filename.chop_extension intput_filename ^ ".s" in
+  let input_filename = Sys.argv.(1) in
+  let output_filename =
+    try Filename.chop_extension input_filename ^ ".s"
+    with Invalid_argument _ -> input_filename ^ ".s"
+  in
 
-  let tokens = Lexer.lex intput_filename in
+  let tokens = Lexer.lex input_filename in
   let ast = Parser.parse tokens in
   (* validate AST for functions and calls *)
   (try Coco.Validator.validate_prog ast
