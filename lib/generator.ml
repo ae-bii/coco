@@ -1,8 +1,12 @@
 open Ast
 
+type var_loc =
+  | Local of int
+  | Global of string
+
 type context = {
   stack_index : int;
-  var_map : (string, int) Hashtbl.t;
+  var_map : (string, var_loc) Hashtbl.t;
   break_label : string option;
   continue_label : string option;
 }
@@ -15,7 +19,15 @@ let new_label () =
 
 let rec generate_prog (p : prog) : string =
   match p with
-  | Prog funcs ->
+  | Prog items ->
+      let funcs, globals =
+        List.fold_left
+          (fun (fs, gs) it ->
+            match it with
+            | FunDecl f -> (f :: fs, gs)
+            | VarDecl d -> (fs, d :: gs))
+          ([], []) items
+      in
       (* collect function definitions and calls to emit externs for undefined callees *)
       let defined =
         List.fold_left
@@ -128,20 +140,91 @@ let rec generate_prog (p : prog) : string =
             (List.map (fun n -> Printf.sprintf "extern _%s\n" n) externs)
           ^ "\n"
       in
-      let funcs_asm = List.map generate_fun_decl funcs |> String.concat "" in
-      externs_asm ^ "section .text\n" ^ funcs_asm
+      let defined_globals, declared_globals =
+        List.fold_left
+          (fun (defs, decls) (Declare (name, init_opt)) ->
+            match init_opt with
+            | Some _ -> ((name, init_opt) :: defs, decls)
+            | None -> (defs, name :: decls))
+          ([], []) globals
+      in
+      (* declared_only are globals that were declared but not defined later *)
+      let declared_only =
+        List.filter
+          (fun name ->
+            not (List.exists (fun (dname, _) -> dname = name) defined_globals))
+          declared_globals
+      in
 
-and generate_fun_decl (f : fun_decl) : string =
+      let data_asm =
+        if defined_globals = [] then
+          ""
+        else
+          let entries =
+            List.map
+              (fun (name, init_opt) ->
+                match init_opt with
+                | Some (Const i) ->
+                    Printf.sprintf
+                      "\nglobal _%s\nsection .data\nalign 8\n_%s:\n  dq %d\n"
+                      name name i
+                | Some _ ->
+                    failwith ("Global initializer must be a constant: " ^ name)
+                | None -> "")
+              defined_globals
+          in
+          String.concat "" entries
+      in
+
+      let bss_asm =
+        if declared_only = [] then
+          ""
+        else
+          let entries =
+            List.map
+              (fun name ->
+                Printf.sprintf
+                  "\nglobal _%s\nsection .bss\nalign 8\n_%s:\n  resq 1\n" name
+                  name)
+              declared_only
+          in
+          String.concat "" entries
+      in
+
+      let base_var_map = Hashtbl.create 32 in
+      List.iter
+        (fun (name, _) -> Hashtbl.add base_var_map name (Global ("_" ^ name)))
+        defined_globals;
+      (* remove declared-only globals that are actually defined later *)
+      let declared_only =
+        List.filter
+          (fun name ->
+            not (List.exists (fun (dname, _) -> dname = name) defined_globals))
+          declared_globals
+      in
+      List.iter
+        (fun name -> Hashtbl.add base_var_map name (Global ("_" ^ name)))
+        declared_only;
+
+      let funcs_asm =
+        List.map (fun f -> generate_fun_decl f base_var_map) funcs
+        |> String.concat ""
+      in
+      externs_asm ^ data_asm ^ bss_asm ^ "section .text\n" ^ funcs_asm
+
+and generate_fun_decl (f : fun_decl)
+    (base_var_map : (string, var_loc) Hashtbl.t) : string =
   match f with
   | Fun (name, params, body_opt) -> (
       let prologue =
         Printf.sprintf "global _%s\n_%s:\n  push rbp\n  mov rbp, rsp\n" name
           name
       in
+      (* initial context includes globals from base_var_map *)
       let initial_context =
         {
           stack_index = 0;
-          var_map = Hashtbl.create 16;
+          var_map = Hashtbl.copy base_var_map;
           break_label = None;
           continue_label = None;
         }
@@ -151,7 +234,7 @@ and generate_fun_decl (f : fun_decl) : string =
         let rec add_params offset = function
           | [] -> ()
           | p :: ps ->
-              Hashtbl.add tbl p offset;
+              Hashtbl.add tbl p (Local offset);
               add_params (offset + 8) ps
         in
         add_params 16 params;
@@ -224,7 +307,7 @@ and generate_declaration (d : declaration) (ctx : context)
       in
 
       let new_stack_index = ctx_after_init.stack_index - 8 in
-      Hashtbl.add ctx_after_init.var_map name new_stack_index;
+      Hashtbl.add ctx_after_init.var_map name (Local new_stack_index);
       let new_ctx =
         {
           stack_index = new_stack_index;
@@ -457,17 +540,23 @@ and generate_exp (e : exp) (ctx : context) : string * context =
           ""
       in
       (asm_args ^ call_asm ^ cleanup_asm, final_ctx)
-  | Var name ->
+  | Var name -> (
       if not (Hashtbl.mem ctx.var_map name) then
         failwith ("Undeclared variable: " ^ name);
-      let offset = Hashtbl.find ctx.var_map name in
-      (Printf.sprintf "  mov rax, [rbp + %d]\n" offset, ctx)
+      let loc = Hashtbl.find ctx.var_map name in
+      match loc with
+      | Local off -> (Printf.sprintf "  mov rax, [rbp + %d]\n" off, ctx)
+      | Global label -> (Printf.sprintf "  mov rax, [rel %s]\n" label, ctx))
   | Assign (name, exp) ->
       if not (Hashtbl.mem ctx.var_map name) then
         failwith ("Undeclared variable: " ^ name);
-      let offset = Hashtbl.find ctx.var_map name in
+      let loc = Hashtbl.find ctx.var_map name in
       let exp_asm, updated_ctx = generate_exp exp ctx in
-      let assign_asm = Printf.sprintf "  mov [rbp + %d], rax\n" offset in
+      let assign_asm =
+        match loc with
+        | Local off -> Printf.sprintf "  mov [rbp + %d], rax\n" off
+        | Global label -> Printf.sprintf "  mov [rel %s], rax\n" label
+      in
       (exp_asm ^ assign_asm, updated_ctx)
   | UnOp (op, inner_exp) ->
       let inner_exp_asm, updated_ctx = generate_exp inner_exp ctx in
@@ -497,7 +586,7 @@ and generate_exp (e : exp) (ctx : context) : string * context =
   | CompoundAssign (name, op, exp) ->
       if not (Hashtbl.mem ctx.var_map name) then
         failwith ("Undeclared variable: " ^ name);
-      let offset = Hashtbl.find ctx.var_map name in
+      let loc = Hashtbl.find ctx.var_map name in
       let exp_asm, updated_ctx = generate_exp exp ctx in
       let op_str =
         match op with
@@ -511,30 +600,55 @@ and generate_exp (e : exp) (ctx : context) : string * context =
             failwith
               "Compound assignment for this operator is not yet implemented"
       in
-      ( exp_asm (* Result of right-hand side is in RAX *)
-        ^ Printf.sprintf "  %s [rbp + %d], rax\n" op_str offset
-        ^ Printf.sprintf "  mov rax, [rbp + %d]\n" offset,
+      ( (exp_asm
+        ^ (match loc with
+          | Local off -> Printf.sprintf "  %s [rbp + %d], rax\n" op_str off
+          | Global label -> Printf.sprintf "  %s [rel %s], rax\n" op_str label)
+        ^
+        match loc with
+        | Local off -> Printf.sprintf "  mov rax, [rbp + %d]\n" off
+        | Global label -> Printf.sprintf "  mov rax, [rel %s]\n" label),
         (* Result is the new value *)
         updated_ctx )
   | PrefixInc name ->
-      let offset = Hashtbl.find ctx.var_map name in
-      ( Printf.sprintf "  add qword [rbp + %d], 1\n" offset
-        ^ Printf.sprintf "  mov rax, [rbp + %d]\n" offset,
+      let loc = Hashtbl.find ctx.var_map name in
+      ( ((match loc with
+         | Local off -> Printf.sprintf "  add qword [rbp + %d], 1\n" off
+         | Global label -> Printf.sprintf "  add qword [rel %s], 1\n" label)
+        ^
+        match loc with
+        | Local off -> Printf.sprintf "  mov rax, [rbp + %d]\n" off
+        | Global label -> Printf.sprintf "  mov rax, [rel %s]\n" label),
         ctx )
   | PostfixInc name ->
-      let offset = Hashtbl.find ctx.var_map name in
-      ( Printf.sprintf "  mov rax, [rbp + %d]\n" offset
-        ^ Printf.sprintf "  add qword [rbp + %d], 1\n" offset,
+      let loc = Hashtbl.find ctx.var_map name in
+      ( ((match loc with
+         | Local off -> Printf.sprintf "  mov rax, [rbp + %d]\n" off
+         | Global label -> Printf.sprintf "  mov rax, [rel %s]\n" label)
+        ^
+        match loc with
+        | Local off -> Printf.sprintf "  add qword [rbp + %d], 1\n" off
+        | Global label -> Printf.sprintf "  add qword [rel %s], 1\n" label),
         ctx )
   | PrefixDec name ->
-      let offset = Hashtbl.find ctx.var_map name in
-      ( Printf.sprintf "  sub qword [rbp + %d], 1\n" offset
-        ^ Printf.sprintf "  mov rax, [rbp + %d]\n" offset,
+      let loc = Hashtbl.find ctx.var_map name in
+      ( ((match loc with
+         | Local off -> Printf.sprintf "  sub qword [rbp + %d], 1\n" off
+         | Global label -> Printf.sprintf "  sub qword [rel %s], 1\n" label)
+        ^
+        match loc with
+        | Local off -> Printf.sprintf "  mov rax, [rbp + %d]\n" off
+        | Global label -> Printf.sprintf "  mov rax, [rel %s]\n" label),
         ctx )
   | PostfixDec name ->
-      let offset = Hashtbl.find ctx.var_map name in
-      ( Printf.sprintf "  mov rax, [rbp + %d]\n" offset
-        ^ Printf.sprintf "  sub qword [rbp + %d], 1\n" offset,
+      let loc = Hashtbl.find ctx.var_map name in
+      ( ((match loc with
+         | Local off -> Printf.sprintf "  mov rax, [rbp + %d]\n" off
+         | Global label -> Printf.sprintf "  mov rax, [rel %s]\n" label)
+        ^
+        match loc with
+        | Local off -> Printf.sprintf "  sub qword [rbp + %d], 1\n" off
+        | Global label -> Printf.sprintf "  sub qword [rel %s], 1\n" label),
         ctx )
   | BinOp (left_exp, op, right_exp) -> (
       match op with
